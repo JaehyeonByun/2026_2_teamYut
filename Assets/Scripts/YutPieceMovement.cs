@@ -18,8 +18,10 @@ public class YutPieceMovement : MonoBehaviour
     [SerializeField] private int currentNodeId = YutRouteRules.Waiting;
     private bool isMoving;
     private bool initialized;
+    private float stackOffset;
 
     public bool IsReady => initialized;
+    public int CurrentNodeId => currentNodeId;
     public bool IsMoving => isMoving;
     public bool IsFinished => initialized && currentNodeId == YutRouteRules.Finished;
     public bool HasRouteChoice => initialized && !isMoving && YutRouteRules.HasRouteChoice(currentNodeId);
@@ -79,7 +81,7 @@ public class YutPieceMovement : MonoBehaviour
     {
         foreach (int node in plan)
         {
-            Vector3 target = GetPoint(node).position + Vector3.up * heightOffset;
+            Vector3 target = GetPoint(node).position + Vector3.up * (heightOffset + stackOffset);
             while ((transform.position - target).sqrMagnitude > 0.000001f)
             {
                 transform.position = Vector3.MoveTowards(transform.position, target,
@@ -107,6 +109,7 @@ public class YutPieceMovement : MonoBehaviour
         if (!initialized) return;
         StopAllCoroutines();
         currentNodeId = YutRouteRules.Waiting;
+        stackOffset = 0f;
         isMoving = false;
         transform.position = waitingPoint.position + Vector3.up * heightOffset;
     }
@@ -116,6 +119,25 @@ public class YutPieceMovement : MonoBehaviour
         StopAllCoroutines();
         isMoving = false;
         if (initialized)
-            transform.position = GetPoint(currentNodeId).position + Vector3.up * heightOffset;
+            transform.position = GetPoint(currentNodeId).position + Vector3.up * (heightOffset + stackOffset);
     }
+
+    // Cosmetic only: game rules compare node IDs, never Transform positions.
+    public void SetStackLevel(int level)
+    {
+        stackOffset = Mathf.Max(0, level) * 0.08f;
+        if (initialized && !isMoving)
+            transform.position = GetPoint(currentNodeId).position + Vector3.up * (heightOffset + stackOffset);
+    }
+
+#if UNITY_EDITOR
+    public void PlaceForTesting(int node)
+    {
+        if (!initialized || node < 0 || node > 30) return;
+        StopAllCoroutines();
+        isMoving = false;
+        currentNodeId = node;
+        SetStackLevel(0);
+    }
+#endif
 }
