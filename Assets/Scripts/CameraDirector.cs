@@ -11,6 +11,7 @@ public class CameraDirector : MonoBehaviour
     [SerializeField] private CinemachineBrain brain;
     [SerializeField] private CinemachineCamera defaultCamera;
     [SerializeField] private CinemachineCamera boardCamera;
+    [SerializeField] private CinemachineCamera throwCamera;
     [SerializeField] private bool enableDebugKeyboard = true;
 
     private bool showingBoard;
@@ -19,7 +20,8 @@ public class CameraDirector : MonoBehaviour
     private void Awake()
     {
         ready = brain != null && defaultCamera != null && boardCamera != null
-            && defaultCamera != boardCamera;
+            && defaultCamera != boardCamera
+            && (throwCamera == null || (throwCamera != defaultCamera && throwCamera != boardCamera));
 
         if (!ready)
         {
@@ -57,6 +59,7 @@ public class CameraDirector : MonoBehaviour
         if (!ready) return;
         defaultCamera.Priority = 20;
         boardCamera.Priority = 10;
+        if (throwCamera != null) throwCamera.Priority = 10;
         showingBoard = false;
     }
 
@@ -65,6 +68,18 @@ public class CameraDirector : MonoBehaviour
         if (!ready) return;
         defaultCamera.Priority = 10;
         boardCamera.Priority = 20;
+        if (throwCamera != null) throwCamera.Priority = 10;
         showingBoard = true;
     }
+
+    public void ShowThrow()
+    {
+        if (!ready) return;
+        if (throwCamera == null) { ShowDefault(); return; }
+        defaultCamera.Priority = 10;
+        boardCamera.Priority = 10;
+        throwCamera.Priority = 20;
+        showingBoard = false;
+    }
 }
+
