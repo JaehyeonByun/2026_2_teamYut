@@ -32,6 +32,8 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private CinemachineBrain cameraBrain;
     [Header("3D throw presentation")]
     [SerializeField] private YutThrowPresenter throwPresenter;
+    [Header("Opponent reactions (optional)")]
+    [SerializeField] private OpponentReactionController opponentReaction;
     [Header("Timing")]
     [SerializeField, Min(0f)] private float opponentThinkSeconds = 0.8f;
     [SerializeField, Min(0f)] private float resultHoldSeconds = 0.6f;
@@ -226,6 +228,7 @@ public class YutTurnManager : MonoBehaviour
                 { Fail("Opponent throw animation was interrupted."); yield break; }
                 if (!opponentPool.RecordRoll(roll.Steps)) { Fail("Opponent roll rejected."); yield break; }
                 SetState(TurnState.OpponentThinking, "Opponent rolled " + YutThrow.Name(roll.Steps));
+                if (roll.Steps >= 4 && opponentReaction != null) opponentReaction.OnGoodRoll();
                 yield return new WaitForSeconds(resultHoldSeconds);
                 continue;
             }
@@ -280,7 +283,15 @@ public class YutTurnManager : MonoBehaviour
         int size = YutGroupRules.Members(Nodes(allies), selected).Count;
         lastOutcome = destination == YutRouteRules.Finished ? actor + " finished a group." :
             actor + " arrived at " + allies[selected].CurrentNodeName + $" (group {size}).";
-        if (captured.Count > 0) lastOutcome += $" Captured {captured.Count}!";
+        if (captured.Count > 0)
+        {
+            lastOutcome += $" Captured {captured.Count}!";
+            if (opponentReaction != null)
+            {
+                if (allies == playerPieces) opponentReaction.OnPiecesLost();
+                else opponentReaction.OnCapture();
+            }
+        }
         Debug.Log(lastOutcome, this);
         return captured.Count;
     }
@@ -288,6 +299,8 @@ public class YutTurnManager : MonoBehaviour
     {
         if (!YutGroupRules.AllFinished(Nodes(team))) return false;
         SetState(TurnState.GameOver, (player ? "You win! " : "Opponent wins! ") + Score() + " Press Reset.");
+        if (opponentReaction != null) opponentReaction.ShowMatchResult(!player);
+        cameraDirector.ShowDefault();
         return true;
     }
     private IEnumerator WaitForCamera()
@@ -305,6 +318,7 @@ public class YutTurnManager : MonoBehaviour
     private void ResetAllPieces()
     {
         if (throwPresenter != null) throwPresenter.ResetPresentation();
+        if (opponentReaction != null) opponentReaction.ResetReaction();
         selectedIndex = -1;
         selectedResultId = -1;
         lastOutcome = "";
@@ -365,6 +379,7 @@ public class YutTurnManager : MonoBehaviour
     private void SetState(TurnState state, string message)
     {
         currentState = state;
+        if (opponentReaction != null) opponentReaction.SetThinking(state == TurnState.OpponentThinking);
         if (turnText != null) turnText.text = message;
         RefreshUI();
     }

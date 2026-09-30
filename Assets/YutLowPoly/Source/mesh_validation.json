@@ -1,0 +1,11 @@
+{
+  "triangles": 68,
+  "vertices_with_hard_edges": 126,
+  "size_m": [
+    0.056,
+    0.028,
+    0.3
+  ],
+  "closed_manifold": true,
+  "volume_m3": 0.0003582108289063206
+}

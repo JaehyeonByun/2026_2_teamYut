@@ -1,0 +1,7 @@
+newmtl YutWood
+Ka 0.2 0.2 0.2
+Kd 1 1 1
+Ks 0.05 0.05 0.05
+Ns 8
+d 1
+map_Kd ../Textures/Yut_BackDo.png
