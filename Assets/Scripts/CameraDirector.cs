@@ -14,6 +14,9 @@ public class CameraDirector : MonoBehaviour
     [SerializeField] private CinemachineCamera throwCamera;
     [SerializeField] private bool enableDebugKeyboard = true;
 
+    [SerializeField] private CinemachineCamera scaleCamera;
+    private bool scaleFocus;
+    public bool HasScaleCamera => ready && scaleCamera != null && scaleCamera.isActiveAndEnabled;
     private bool showingBoard;
     private bool ready;
 
@@ -21,7 +24,8 @@ public class CameraDirector : MonoBehaviour
     {
         ready = brain != null && defaultCamera != null && boardCamera != null
             && defaultCamera != boardCamera
-            && (throwCamera == null || (throwCamera != defaultCamera && throwCamera != boardCamera));
+            && (throwCamera == null || (throwCamera != defaultCamera && throwCamera != boardCamera))
+            && (scaleCamera == null || (scaleCamera != defaultCamera && scaleCamera != boardCamera && scaleCamera != throwCamera));
 
         if (!ready)
         {
@@ -49,37 +53,27 @@ public class CameraDirector : MonoBehaviour
     // Also callable from a UI Button On Click event.
     public void ToggleView()
     {
-        if (!ready || brain.IsBlending) return;
+        if (!ready || scaleFocus || brain.IsBlending) return;
         if (showingBoard) ShowDefault();
         else ShowBoard();
     }
 
-    public void ShowDefault()
+    public void ShowDefault() { if (ready && !scaleFocus) Activate(defaultCamera); }
+    public void ShowBoard() { if (ready && !scaleFocus) Activate(boardCamera); }
+    public void ShowThrow() { if (ready && !scaleFocus) Activate(throwCamera != null ? throwCamera : defaultCamera); }
+    public void BeginScaleFocus()
     {
-        if (!ready) return;
-        defaultCamera.Priority = 20;
-        boardCamera.Priority = 10;
-        if (throwCamera != null) throwCamera.Priority = 10;
-        showingBoard = false;
+        if (!HasScaleCamera) return;
+        scaleFocus = true;
+        Activate(scaleCamera);
     }
-
-    public void ShowBoard()
+    public void EndScaleFocus() { scaleFocus = false; }
+    private void Activate(CinemachineCamera target)
     {
-        if (!ready) return;
-        defaultCamera.Priority = 10;
-        boardCamera.Priority = 20;
-        if (throwCamera != null) throwCamera.Priority = 10;
-        showingBoard = true;
-    }
-
-    public void ShowThrow()
-    {
-        if (!ready) return;
-        if (throwCamera == null) { ShowDefault(); return; }
-        defaultCamera.Priority = 10;
-        boardCamera.Priority = 10;
-        throwCamera.Priority = 20;
-        showingBoard = false;
+        defaultCamera.Priority = target == defaultCamera ? 20 : 10;
+        boardCamera.Priority = target == boardCamera ? 20 : 10;
+        if (throwCamera != null) throwCamera.Priority = target == throwCamera ? 20 : 10;
+        if (scaleCamera != null) scaleCamera.Priority = target == scaleCamera ? 20 : 10;
+        showingBoard = target == boardCamera;
     }
 }
-

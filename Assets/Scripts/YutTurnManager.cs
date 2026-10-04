@@ -13,7 +13,7 @@ public class YutTurnManager : MonoBehaviour
     public enum TurnState
     {
         Preparing, PlayerInput, PlayerMoving, OpponentThinking,
-        OpponentMoving, GameOver, SetupError, ChoosingRoute, AwaitingRoll, Rolling
+        OpponentMoving, GameOver, SetupError, ChoosingRoute, AwaitingRoll, Rolling, CardPlaying
     }
     [Header("Exactly four DIFFERENT pieces per team")]
     [SerializeField] private YutPieceMovement[] playerPieces = new YutPieceMovement[4];
@@ -36,6 +36,14 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private OpponentReactionController opponentReaction;
     [Header("Soul duel health (required)")]
     [SerializeField] private DuelHealth duelHealth;
+    [Header("Healing card (optional)")]
+    [SerializeField] private YutCardDefinition healingCard;
+    [SerializeField] private Button healingCardButton;
+    [SerializeField] private TMP_Text healingCardText;
+    private readonly YutCardTurnRules cardTurns = new YutCardTurnRules();
+    [Header("Scale presentation")]
+    [SerializeField, Min(0f)] private float scaleLeadSeconds = 0.12f;
+    [SerializeField, Min(0f)] private float scaleHoldSeconds = 0.85f;
     [Header("Timing")]
     [SerializeField, Min(0f)] private float opponentThinkSeconds = 0.8f;
     [SerializeField, Min(0f)] private float resultHoldSeconds = 0.6f;
@@ -65,7 +73,7 @@ public class YutTurnManager : MonoBehaviour
         SetState(TurnState.Preparing, "Preparing...");
         yield return null;
         ready = ValidateSetup();
-        if (!ready) { Fail("Check Duel Health, pieces/UI/cameras and Throw Presenter (including its four sticks and landing points)."); yield break; }
+        if (!ready) { Fail("Check CM_Scale, Duel Health, pieces/UI/cameras and Throw Presenter (including its four sticks and landing points)."); yield break; }
         for (int i = 0; i < 5; i++) resultLabels[i] = moveButtons[i].GetComponentInChildren<TMP_Text>(true);
         RestartMatch();
     }
@@ -73,7 +81,7 @@ public class YutTurnManager : MonoBehaviour
     {
         if (turnText == null || resultText == null || turnText == resultText
             || duelHealth == null || !duelHealth.isActiveAndEnabled
-            || cameraDirector == null || cameraBrain == null
+            || cameraDirector == null || !cameraDirector.HasScaleCamera || cameraBrain == null
             || throwPresenter == null || !throwPresenter.IsReady || !throwPresenter.isActiveAndEnabled
             || playerPieces == null || playerPieces.Length != 4
             || opponentPieces == null || opponentPieces.Length != 4
@@ -88,6 +96,7 @@ public class YutTurnManager : MonoBehaviour
             new[] {outerRouteButton, shortcutRouteButton, rollButton, confirmMoveButton}})
             foreach (var button in set)
                 if (button == null || !buttons.Add(button)) return false;
+        if (healingCardButton != null && buttons.Contains(healingCardButton)) return false;
         return true;
     }
     private bool CanSelect() => ready && isActiveAndEnabled
@@ -176,13 +185,16 @@ public class YutTurnManager : MonoBehaviour
         if (group == null) yield break;
         RefreshUI();
         while (AnyMoving(group)) yield return null;
+        bool finishing = playerPieces[index].IsFinished;
+        if (finishing) yield return FocusScaleForAction();
         int captured = ResolveLanding(playerPieces, opponentPieces, index, "Player", group);
         if (!playerPool.CompleteMove(captured, allowCaptureBonusAfterYutMo)) { Fail("Missing pending player move."); yield break; }
         if (captured > 0) lastOutcome += playerPool.PendingRolls > 0 ? " Roll again." : " No second Yut/Mo bonus.";
         if (CheckDuelVictory()) yield break;
         DiscardIfAllResting(playerPieces, playerPool);
         SetState(TurnState.PlayerMoving, lastOutcome + " " + Score());
-        yield return new WaitForSeconds(resultHoldSeconds);
+        yield return new WaitForSeconds(finishing ? scaleHoldSeconds : resultHoldSeconds);
+        if (finishing) cameraDirector.EndScaleFocus();
         if (playerPool.IsComplete)
         {
             if (skipOpponentForRouteTests) yield return BeginPlayerTurn();
@@ -193,6 +205,7 @@ public class YutTurnManager : MonoBehaviour
     private IEnumerator BeginPlayerTurn()
     {
         duelHealth.BeginTurn(true);
+        cardTurns.BeginTurn(true);
         playerPool.BeginTurn();
         yield return PreparePlayerPhase();
     }
@@ -213,6 +226,7 @@ public class YutTurnManager : MonoBehaviour
     private IEnumerator OpponentTurn()
     {
         duelHealth.BeginTurn(false);
+        cardTurns.BeginTurn(false);
         opponentPool.BeginTurn();
         showingPlayerPool = false;
         selectedIndex = -1;
@@ -220,6 +234,13 @@ public class YutTurnManager : MonoBehaviour
         SetState(TurnState.OpponentThinking, "Opponent turn.");
         cameraDirector.ShowDefault();
         yield return WaitForCamera();
+        if (CanHeal(false) && duelHealth.OpponentMaxHP - duelHealth.OpponentHP >= healingCard.amount)
+        {
+            SetState(TurnState.CardPlaying, "Opponent uses a healing card.");
+            yield return PlayHealingCard(false);
+            cameraDirector.ShowDefault();
+            yield return WaitForCamera();
+        }
         while (!opponentPool.IsComplete)
         {
             SetState(TurnState.OpponentThinking, "Opponent thinking... " + Score());
@@ -258,13 +279,16 @@ public class YutTurnManager : MonoBehaviour
             if (group == null) yield break;
             RefreshUI();
             while (AnyMoving(group)) yield return null;
+            bool finishing = opponentPieces[index].IsFinished;
+            if (finishing) yield return FocusScaleForAction();
             int captured = ResolveLanding(opponentPieces, playerPieces, index, "Opponent", group);
             if (!opponentPool.CompleteMove(captured, allowCaptureBonusAfterYutMo)) { Fail("Missing pending opponent move."); yield break; }
             if (captured > 0) lastOutcome += opponentPool.PendingRolls > 0 ? " Roll again." : " No second Yut/Mo bonus.";
             if (CheckDuelVictory()) yield break;
             DiscardIfAllResting(opponentPieces, opponentPool);
             SetState(TurnState.OpponentMoving, lastOutcome + " " + Score());
-            yield return new WaitForSeconds(resultHoldSeconds);
+            yield return new WaitForSeconds(finishing ? scaleHoldSeconds : resultHoldSeconds);
+            if (finishing) cameraDirector.EndScaleFocus();
         }
         yield return BeginPlayerTurn();
     }
@@ -337,7 +361,7 @@ public class YutTurnManager : MonoBehaviour
         selectedIndex = selectedResultId = -1;
         SetState(TurnState.GameOver, (playerWon ? "You win! " : "Opponent wins! ") + Score() + " Press Reset.");
         if (opponentReaction != null) opponentReaction.ShowMatchResult(!playerWon);
-        cameraDirector.ShowDefault();
+        cameraDirector.BeginScaleFocus();
         StartCoroutine(PresentDuelResult());
         return true;
     }
@@ -357,6 +381,46 @@ public class YutTurnManager : MonoBehaviour
         return index >= 0 && index < team.Length && team[index] != null && !team[index].IsFinished
             && duelHealth != null && duelHealth.CanUse(team == playerPieces, index);
     }
+    private IEnumerator FocusScaleForAction()
+    {
+        cameraDirector.BeginScaleFocus();
+        yield return WaitForCamera();
+        yield return new WaitForSeconds(scaleLeadSeconds);
+    }
+    private bool CanHeal(bool player)
+    {
+        return duelHealth != null && !duelHealth.IsOver && healingCard != null
+            && healingCard.effect == YutCardEffect.RestoreHealth && healingCard.amount > 0
+            && cardTurns.CanUse(player)
+            && (player ? duelHealth.PlayerHP < duelHealth.PlayerMaxHP : duelHealth.OpponentHP < duelHealth.OpponentMaxHP);
+    }
+    public void UseHealingCard()
+    {
+        if (!ready || !isActiveAndEnabled || !CanHeal(true)
+            || (currentState != TurnState.AwaitingRoll && currentState != TurnState.PlayerInput)) return;
+        TurnState resume = currentState;
+        SetState(TurnState.CardPlaying, "Playing healing card...");
+        StartCoroutine(PlayerHealingCard(resume));
+    }
+    private IEnumerator PlayerHealingCard(TurnState resume)
+    {
+        yield return PlayHealingCard(true);
+        if (resume == TurnState.AwaitingRoll) cameraDirector.ShowThrow();
+        else cameraDirector.ShowBoard();
+        yield return WaitForCamera();
+        SetState(resume, "Healing card resolved. " + Score());
+    }
+    private IEnumerator PlayHealingCard(bool player)
+    {
+        yield return FocusScaleForAction();
+        if (CanHeal(player) && cardTurns.TryConsume(player))
+        {
+            int restored = duelHealth.Heal(player, healingCard.amount);
+            SetState(TurnState.CardPlaying, (player ? "Player" : "Opponent") + " restored " + restored + " HP. " + Score());
+        }
+        yield return new WaitForSeconds(scaleHoldSeconds);
+        cameraDirector.EndScaleFocus();
+    }
     private IEnumerator WaitForCamera()
     {
         yield return null;
@@ -372,6 +436,8 @@ public class YutTurnManager : MonoBehaviour
     }
     private void ResetAllPieces()
     {
+        if (cameraDirector != null) cameraDirector.EndScaleFocus();
+        cardTurns.Reset(healingCard != null ? Mathf.Max(0, healingCard.startingCopiesPerSide) : 0);
         if (duelHealth != null) duelHealth.ResetMatch();
         if (throwPresenter != null) throwPresenter.ResetPresentation();
         if (opponentReaction != null) opponentReaction.ResetReaction();
@@ -436,6 +502,15 @@ public class YutTurnManager : MonoBehaviour
     }
     private void RefreshUI()
     {
+        if (healingCardButton != null)
+        {
+            healingCardButton.interactable = ready && CanHeal(true)
+                && (currentState == TurnState.AwaitingRoll || currentState == TurnState.PlayerInput);
+            if (healingCardText == null) healingCardText = healingCardButton.GetComponentInChildren<TMP_Text>(true);
+        }
+        if (healingCardText != null)
+            healingCardText.text = healingCard == null ? "No card" : healingCard.displayName + " +" + healingCard.amount + " HP x" + cardTurns.Count(true);
+
         bool input = ready && currentState == TurnState.PlayerInput && playerPool.CanMove;
         if (rollButton != null) rollButton.interactable = ready && currentState == TurnState.AwaitingRoll && playerPool.CanRoll;
         var selected = playerPool.Find(selectedResultId);
@@ -572,6 +647,28 @@ public class YutTurnManager : MonoBehaviour
     [ContextMenu("Tests/Load Win With Unused Result")]
     private void LoadWinWithUnusedResult() { HealthPlayerWin(); }
 
+    [ContextMenu("Tests/Cards/Player Heal From 60")]
+    private void TestPlayerHeal()
+    {
+        if (!PrepareTest(true, 1)) return;
+        duelHealth.SetHealthForTesting(Mathf.Min(60, duelHealth.PlayerMaxHP), duelHealth.OpponentMaxHP);
+        StartCoroutine(BeginPlayerTurn());
+    }
+    [ContextMenu("Tests/Cards/Player Heal From 90")]
+    private void TestPlayerHealCap()
+    {
+        if (!PrepareTest(true, 1)) return;
+        duelHealth.SetHealthForTesting(Mathf.Min(90, duelHealth.PlayerMaxHP), duelHealth.OpponentMaxHP);
+        StartCoroutine(BeginPlayerTurn());
+    }
+    [ContextMenu("Tests/Cards/Opponent Heal From 60")]
+    private void TestOpponentHeal()
+    {
+        if (!PrepareTest(false)) return;
+        duelHealth.SetHealthForTesting(duelHealth.PlayerMaxHP, Mathf.Min(60, duelHealth.OpponentMaxHP));
+        testOpponentRolls.Enqueue(1);
+        StartCoroutine(OpponentTurn());
+    }
     [ContextMenu("Tests/Health/1 Single Finish")]
     private void HealthSingleFinish()
     {

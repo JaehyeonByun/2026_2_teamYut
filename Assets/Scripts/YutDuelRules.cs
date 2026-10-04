@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-// Pure battle rules. One fresh completion = one damage per piece.
+// Pure battle rules. Damage and healing values are configurable.
 public sealed class YutDuelRules
 {
     private readonly bool[,] resting = new bool[2, 4];
@@ -9,13 +9,17 @@ public sealed class YutDuelRules
     public int OpponentMax { get; private set; }
     public int PlayerHP { get; private set; }
     public int OpponentHP { get; private set; }
+    public int DamagePerPiece { get; private set; }
     public bool IsOver => PlayerHP == 0 || OpponentHP == 0;
     public bool PlayerWon => IsOver && OpponentHP == 0;
 
-    public YutDuelRules(int playerMax = 6, int opponentMax = 6) { Reset(playerMax, opponentMax); }
-    public void Reset(int playerMax, int opponentMax)
+    public YutDuelRules(int playerMax = 100, int opponentMax = 100, int damagePerPiece = 20)
+    { Reset(playerMax, opponentMax, damagePerPiece); }
+    public void Reset(int playerMax, int opponentMax, int damagePerPiece = 20)
     {
         if (playerMax < 1 || opponentMax < 1) throw new ArgumentOutOfRangeException("Health must be positive.");
+        if (damagePerPiece < 1) throw new ArgumentOutOfRangeException("Damage must be positive.");
+        DamagePerPiece = damagePerPiece;
         PlayerMax = PlayerHP = playerMax; OpponentMax = OpponentHP = opponentMax;
         Array.Clear(resting, 0, resting.Length);
     }
@@ -39,9 +43,19 @@ public sealed class YutDuelRules
                 throw new ArgumentException("Invalid or already completed piece; damage was not applied.");
         foreach (int i in indices) resting[player ? 0 : 1, i] = true;
         int old = player ? OpponentHP : PlayerHP;
-        int remaining = Math.Max(0, old - indices.Count);
+        int remaining = (int)Math.Max(0L, old - (long)indices.Count * DamagePerPiece);
         if (player) OpponentHP = remaining; else PlayerHP = remaining;
         return old - remaining;
+    }
+    public int Heal(bool player, int amount)
+    {
+        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+        if (IsOver) return 0;
+        int current = player ? PlayerHP : OpponentHP;
+        int maximum = player ? PlayerMax : OpponentMax;
+        int restored = (int)Math.Min((long)amount, maximum - current);
+        if (player) PlayerHP += restored; else OpponentHP += restored;
+        return restored;
     }
 #if UNITY_EDITOR
     public void SetHealthForTesting(int playerHP, int opponentHP)
