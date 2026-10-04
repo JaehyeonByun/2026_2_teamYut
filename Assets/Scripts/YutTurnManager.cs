@@ -2,12 +2,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
-using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Cinemachine;
 
-// Day 3 prototype: one piece per side, alternating moves, no capture or bonus rolls.
-// Requires the previously supplied YutPieceMovement and CameraDirector scripts.
+// Phase order: resolve all earned rolls, select a saved result and piece,
+// confirm movement, resolve landing, then repeat until the turn pool is empty.
 public class YutTurnManager : MonoBehaviour
 {
     public enum TurnState
@@ -34,6 +34,8 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private YutThrowPresenter throwPresenter;
     [Header("Opponent reactions (optional)")]
     [SerializeField] private OpponentReactionController opponentReaction;
+    [Header("Soul duel health (required)")]
+    [SerializeField] private DuelHealth duelHealth;
     [Header("Timing")]
     [SerializeField, Min(0f)] private float opponentThinkSeconds = 0.8f;
     [SerializeField, Min(0f)] private float resultHoldSeconds = 0.6f;
@@ -50,6 +52,7 @@ public class YutTurnManager : MonoBehaviour
     private readonly System.Random opponentRollRandom = new System.Random(System.Guid.NewGuid().GetHashCode());
     private readonly System.Random opponentDecisionRandom = new System.Random(System.Guid.NewGuid().GetHashCode());
     private readonly Queue<int> testPlayerRolls = new Queue<int>();
+    private readonly Queue<int> testOpponentRolls = new Queue<int>();
     private bool ready;
     private bool showingPlayerPool = true;
     private int selectedIndex = -1;
@@ -62,13 +65,14 @@ public class YutTurnManager : MonoBehaviour
         SetState(TurnState.Preparing, "Preparing...");
         yield return null;
         ready = ValidateSetup();
-        if (!ready) { Fail("Check pieces/UI/cameras and Throw Presenter (including its four sticks and landing points)."); yield break; }
+        if (!ready) { Fail("Check Duel Health, pieces/UI/cameras and Throw Presenter (including its four sticks and landing points)."); yield break; }
         for (int i = 0; i < 5; i++) resultLabels[i] = moveButtons[i].GetComponentInChildren<TMP_Text>(true);
         RestartMatch();
     }
     private bool ValidateSetup()
     {
         if (turnText == null || resultText == null || turnText == resultText
+            || duelHealth == null || !duelHealth.isActiveAndEnabled
             || cameraDirector == null || cameraBrain == null
             || throwPresenter == null || !throwPresenter.IsReady || !throwPresenter.isActiveAndEnabled
             || playerPieces == null || playerPieces.Length != 4
@@ -76,7 +80,7 @@ public class YutTurnManager : MonoBehaviour
             || moveButtons == null || moveButtons.Length != 5
             || pieceButtons == null || pieceButtons.Length != 4) return false;
         var pieces = new HashSet<YutPieceMovement>();
-        foreach (var team in new[] { playerPieces, opponentPieces })
+        foreach (var team in new[] {playerPieces, opponentPieces})
             foreach (var piece in team)
                 if (piece == null || !piece.IsReady || !piece.isActiveAndEnabled || !pieces.Add(piece)) return false;
         var buttons = new HashSet<Button>();
@@ -118,7 +122,7 @@ public class YutTurnManager : MonoBehaviour
     }
     public void SelectPlayerPiece(int index)
     {
-        if (!CanSelect() || index < 0 || index >= 4 || playerPieces[index].IsFinished) return;
+        if (!CanSelect() || index < 0 || index >= 4 || !PieceAvailable(playerPieces, index)) return;
         selectedIndex = index;
         ShowSelection();
     }
@@ -142,7 +146,7 @@ public class YutTurnManager : MonoBehaviour
     }
     public void ConfirmMove()
     {
-        if (!CanSelect() || selectedIndex < 0 || playerPieces[selectedIndex].IsFinished) return;
+        if (!CanSelect() || selectedIndex < 0 || !PieceAvailable(playerPieces, selectedIndex)) return;
         var result = playerPool.Find(selectedResultId);
         if (result == null) return;
         var piece = playerPieces[selectedIndex];
@@ -172,10 +176,11 @@ public class YutTurnManager : MonoBehaviour
         if (group == null) yield break;
         RefreshUI();
         while (AnyMoving(group)) yield return null;
-        int captured = ResolveLanding(playerPieces, opponentPieces, index, "Player");
+        int captured = ResolveLanding(playerPieces, opponentPieces, index, "Player", group);
         if (!playerPool.CompleteMove(captured, allowCaptureBonusAfterYutMo)) { Fail("Missing pending player move."); yield break; }
         if (captured > 0) lastOutcome += playerPool.PendingRolls > 0 ? " Roll again." : " No second Yut/Mo bonus.";
-        if (CheckVictory(playerPieces, true)) yield break;
+        if (CheckDuelVictory()) yield break;
+        DiscardIfAllResting(playerPieces, playerPool);
         SetState(TurnState.PlayerMoving, lastOutcome + " " + Score());
         yield return new WaitForSeconds(resultHoldSeconds);
         if (playerPool.IsComplete)
@@ -187,6 +192,7 @@ public class YutTurnManager : MonoBehaviour
     }
     private IEnumerator BeginPlayerTurn()
     {
+        duelHealth.BeginTurn(true);
         playerPool.BeginTurn();
         yield return PreparePlayerPhase();
     }
@@ -206,6 +212,7 @@ public class YutTurnManager : MonoBehaviour
 
     private IEnumerator OpponentTurn()
     {
+        duelHealth.BeginTurn(false);
         opponentPool.BeginTurn();
         showingPlayerPool = false;
         selectedIndex = -1;
@@ -219,7 +226,13 @@ public class YutTurnManager : MonoBehaviour
             yield return new WaitForSeconds(opponentThinkSeconds);
             if (opponentPool.CanRoll)
             {
-                var roll = YutThrow.Roll(opponentRollRandom);
+                YutThrow roll;
+                if (testOpponentRolls.Count > 0)
+                {
+                    int steps = testOpponentRolls.Dequeue();
+                    roll = YutThrow.FromMask(steps == 5 ? 0 : (1 << steps) - 1);
+                }
+                else roll = YutThrow.Roll(opponentRollRandom);
                 SetState(TurnState.Rolling, "Opponent rolling...");
                 cameraDirector.ShowThrow();
                 yield return WaitForCamera();
@@ -245,10 +258,11 @@ public class YutTurnManager : MonoBehaviour
             if (group == null) yield break;
             RefreshUI();
             while (AnyMoving(group)) yield return null;
-            int captured = ResolveLanding(opponentPieces, playerPieces, index, "Opponent");
+            int captured = ResolveLanding(opponentPieces, playerPieces, index, "Opponent", group);
             if (!opponentPool.CompleteMove(captured, allowCaptureBonusAfterYutMo)) { Fail("Missing pending opponent move."); yield break; }
             if (captured > 0) lastOutcome += opponentPool.PendingRolls > 0 ? " Roll again." : " No second Yut/Mo bonus.";
-            if (CheckVictory(opponentPieces, false)) yield break;
+            if (CheckDuelVictory()) yield break;
+            DiscardIfAllResting(opponentPieces, opponentPool);
             SetState(TurnState.OpponentMoving, lastOutcome + " " + Score());
             yield return new WaitForSeconds(resultHoldSeconds);
         }
@@ -259,7 +273,7 @@ public class YutTurnManager : MonoBehaviour
         YutTurnPool pool, int resultId, bool shortcut)
     {
         var result = pool.Find(resultId);
-        if (result == null || !pool.CanMove || index < 0 || index >= team.Length)
+        if (result == null || !pool.CanMove || index < 0 || index >= team.Length || !PieceAvailable(team, index))
         { Fail("Result or piece is unavailable."); return null; }
         var group = new List<YutPieceMovement>();
         foreach (int member in YutGroupRules.Members(Nodes(team), index)) group.Add(team[member]);
@@ -274,8 +288,28 @@ public class YutTurnManager : MonoBehaviour
             { Fail("Unexpected group move failure."); return null; }
         return group;
     }
-    private int ResolveLanding(YutPieceMovement[] allies, YutPieceMovement[] enemies, int selected, string actor)
+    private int ResolveLanding(YutPieceMovement[] allies, YutPieceMovement[] enemies, int selected,
+        string actor, List<YutPieceMovement> movingGroup)
     {
+        if (allies[selected].IsFinished)
+        {
+            // The moving group was captured BEFORE movement. Finished-node grouping returns empty,
+            // and counting every finished piece would repeatedly damage for old completions.
+            var members = new List<int>();
+            foreach (var piece in movingGroup) members.Add(System.Array.IndexOf(allies, piece));
+            bool player = allies == playerPieces;
+            int damage = duelHealth.ResolveFinish(player, members);
+            foreach (var piece in movingGroup) piece.ResetPiece();
+            RefreshStacks();
+            lastOutcome = $"{actor} finished {movingGroup.Count} piece(s): {damage} damage. Rest until next own turn.";
+            if (opponentReaction != null && !duelHealth.IsOver)
+            {
+                if (player) opponentReaction.OnPiecesLost();
+                else opponentReaction.OnCapture();
+            }
+            Debug.Log(lastOutcome + " " + Score(), this);
+            return 0;
+        }
         int destination = allies[selected].CurrentNodeId;
         List<int> captured = YutGroupRules.Captured(Nodes(enemies), destination);
         foreach (int index in captured) enemies[index].ResetPiece();
@@ -295,13 +329,33 @@ public class YutTurnManager : MonoBehaviour
         Debug.Log(lastOutcome, this);
         return captured.Count;
     }
-    private bool CheckVictory(YutPieceMovement[] team, bool player)
+    private bool CheckDuelVictory()
     {
-        if (!YutGroupRules.AllFinished(Nodes(team))) return false;
-        SetState(TurnState.GameOver, (player ? "You win! " : "Opponent wins! ") + Score() + " Press Reset.");
-        if (opponentReaction != null) opponentReaction.ShowMatchResult(!player);
+        if (!duelHealth.IsOver) return false;
+        bool playerWon = duelHealth.PlayerWon;
+        playerPool.Clear(); opponentPool.Clear();
+        selectedIndex = selectedResultId = -1;
+        SetState(TurnState.GameOver, (playerWon ? "You win! " : "Opponent wins! ") + Score() + " Press Reset.");
+        if (opponentReaction != null) opponentReaction.ShowMatchResult(!playerWon);
         cameraDirector.ShowDefault();
+        StartCoroutine(PresentDuelResult());
         return true;
+    }
+    private IEnumerator PresentDuelResult()
+    {
+        yield return WaitForCamera();
+        if (currentState == TurnState.GameOver && duelHealth.IsOver) duelHealth.PublishResult();
+    }
+    private void DiscardIfAllResting(YutPieceMovement[] team, YutTurnPool pool)
+    {
+        if (GroupRepresentatives(team).Count > 0) return;
+        pool.Clear();
+        lastOutcome += " All pieces resting: unused results discarded, turn ends.";
+    }
+    private bool PieceAvailable(YutPieceMovement[] team, int index)
+    {
+        return index >= 0 && index < team.Length && team[index] != null && !team[index].IsFinished
+            && duelHealth != null && duelHealth.CanUse(team == playerPieces, index);
     }
     private IEnumerator WaitForCamera()
     {
@@ -312,11 +366,13 @@ public class YutTurnManager : MonoBehaviour
     {
         if (!ready || !isActiveAndEnabled) return;
         StopAllCoroutines();
+        skipOpponentForRouteTests = false;
         ResetAllPieces();
         StartCoroutine(BeginPlayerTurn());
     }
     private void ResetAllPieces()
     {
+        if (duelHealth != null) duelHealth.ResetMatch();
         if (throwPresenter != null) throwPresenter.ResetPresentation();
         if (opponentReaction != null) opponentReaction.ResetReaction();
         selectedIndex = -1;
@@ -325,13 +381,14 @@ public class YutTurnManager : MonoBehaviour
         playerPool.Clear();
         opponentPool.Clear();
         testPlayerRolls.Clear();
+        testOpponentRolls.Clear();
         foreach (var piece in playerPieces) piece.ResetPiece();
         foreach (var piece in opponentPieces) piece.ResetPiece();
         RefreshStacks();
     }
     private void RefreshStacks()
     {
-        foreach (var team in new[] { playerPieces, opponentPieces })
+        foreach (var team in new[] {playerPieces, opponentPieces})
         {
             var levels = new Dictionary<int, int>();
             foreach (var piece in team)
@@ -356,25 +413,19 @@ public class YutTurnManager : MonoBehaviour
         foreach (var piece in group) if (piece.IsMoving) return true;
         return false;
     }
-    private static List<int> GroupRepresentatives(YutPieceMovement[] team)
+    private List<int> GroupRepresentatives(YutPieceMovement[] team)
     {
         var result = new List<int>();
         var seen = new HashSet<int>();
         for (int i = 0; i < team.Length; i++)
         {
             int node = team[i].CurrentNodeId;
-            if (node == YutRouteRules.Finished) continue;
+            if (!PieceAvailable(team, i)) continue;
             if (node == YutRouteRules.Waiting || seen.Add(node)) result.Add(i);
         }
         return result;
     }
-    private string Score()
-    {
-        int p = 0, e = 0;
-        foreach (var piece in playerPieces) if (piece.IsFinished) p++;
-        foreach (var piece in opponentPieces) if (piece.IsFinished) e++;
-        return $"Finished P:{p}/4 E:{e}/4";
-    }
+    private string Score() => duelHealth == null ? "HP unavailable" : duelHealth.Summary;
 
     private void SetState(TurnState state, string message)
     {
@@ -389,7 +440,7 @@ public class YutTurnManager : MonoBehaviour
         if (rollButton != null) rollButton.interactable = ready && currentState == TurnState.AwaitingRoll && playerPool.CanRoll;
         var selected = playerPool.Find(selectedResultId);
         if (confirmMoveButton != null) confirmMoveButton.interactable = input && selectedIndex >= 0
-            && selected != null && !playerPieces[selectedIndex].IsFinished;
+            && selected != null && PieceAvailable(playerPieces, selectedIndex);
         if (moveButtons != null)
             for (int i = 0; i < moveButtons.Length; i++)
             {
@@ -401,7 +452,7 @@ public class YutTurnManager : MonoBehaviour
         if (pieceButtons != null)
             for (int i = 0; i < pieceButtons.Length; i++)
                 if (pieceButtons[i] != null) pieceButtons[i].interactable = input && i < playerPieces.Length
-                    && playerPieces[i] != null && !playerPieces[i].IsFinished;
+                    && PieceAvailable(playerPieces, i);
         bool route = ready && currentState == TurnState.ChoosingRoute;
         if (outerRouteButton != null) outerRouteButton.interactable = route;
         if (shortcutRouteButton != null) shortcutRouteButton.interactable = route;
@@ -420,7 +471,15 @@ public class YutTurnManager : MonoBehaviour
                 any = true;
             }
             if (!any) text.Append("None");
-            if (skipOpponentForRouteTests || testPlayerRolls.Count > 0) text.Append("\n[TEST MODE]");
+            if (duelHealth != null)
+            {
+                text.Append("\nResting until next own turn:");
+                bool resting = false;
+                for (int i = 0; i < 4; i++)
+                    if (duelHealth.IsResting(showingPlayerPool, i)) { text.Append(" P").Append(i + 1); resting = true; }
+                if (!resting) text.Append(" None");
+            }
+            if (skipOpponentForRouteTests || testPlayerRolls.Count > 0 || testOpponentRolls.Count > 0) text.Append("\n[TEST MODE]");
             resultText.text = text.ToString();
         }
     }
@@ -509,26 +568,48 @@ public class YutTurnManager : MonoBehaviour
         StartCoroutine(BeginPlayerTurn());
     }
     [ContextMenu("Tests/Load Finish Test")]
-    private void LoadFinishTest()
-    {
-        if (!PrepareTest(true, 1)) return;
-        playerPieces[0].PlaceForTesting(30);
-        playerPieces[1].PlaceForTesting(30);
-        playerPieces[2].PlaceForTesting(20);
-        playerPieces[3].PlaceForTesting(20);
-        RefreshStacks();
-        StartCoroutine(BeginPlayerTurn());
-    }
+    private void LoadFinishTest() { HealthStackDamage(); }
     [ContextMenu("Tests/Load Win With Unused Result")]
-    private void LoadWinWithUnusedResult()
+    private void LoadWinWithUnusedResult() { HealthPlayerWin(); }
+
+    [ContextMenu("Tests/Health/1 Single Finish")]
+    private void HealthSingleFinish()
     {
         if (!PrepareTest(true, 4, 1)) return;
-        playerPieces[0].PlaceForTesting(30);
-        playerPieces[1].PlaceForTesting(30);
-        playerPieces[2].PlaceForTesting(30);
-        playerPieces[3].PlaceForTesting(20);
-        RefreshStacks();
+        playerPieces[0].PlaceForTesting(20);
         StartCoroutine(BeginPlayerTurn());
+    }
+    [ContextMenu("Tests/Health/2 Stack Damage")]
+    private void HealthStackDamage()
+    {
+        if (!PrepareTest(true, 4, 1)) return;
+        playerPieces[0].PlaceForTesting(20); playerPieces[1].PlaceForTesting(20);
+        RefreshStacks(); StartCoroutine(BeginPlayerTurn());
+    }
+    [ContextMenu("Tests/Health/3 Player Win")]
+    private void HealthPlayerWin()
+    {
+        if (!PrepareTest(true, 4, 1)) return;
+        duelHealth.SetHealthForTesting(duelHealth.PlayerHP, 1);
+        playerPieces[0].PlaceForTesting(20);
+        StartCoroutine(BeginPlayerTurn());
+    }
+    [ContextMenu("Tests/Health/4 Opponent Win")]
+    private void HealthOpponentWin()
+    {
+        if (!PrepareTest(false)) return;
+        duelHealth.SetHealthForTesting(1, duelHealth.OpponentHP);
+        foreach (var piece in opponentPieces) piece.PlaceForTesting(20);
+        testOpponentRolls.Enqueue(1);
+        RefreshStacks(); StartCoroutine(OpponentTurn());
+    }
+    [ContextMenu("Tests/Health/5 All Pieces Resting")]
+    private void HealthAllResting()
+    {
+        if (!PrepareTest(false, 4, 1)) return;
+        foreach (var piece in playerPieces) piece.PlaceForTesting(20);
+        testOpponentRolls.Enqueue(1);
+        RefreshStacks(); StartCoroutine(BeginPlayerTurn());
     }
 #endif
 }
