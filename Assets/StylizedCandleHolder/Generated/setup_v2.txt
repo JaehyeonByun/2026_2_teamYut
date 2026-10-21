@@ -1,0 +1,1 @@
+Candle holder created. Restore missing assets with Tools/Stylized Candle Holder/Create Missing Assets.

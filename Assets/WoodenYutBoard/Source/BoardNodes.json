@@ -1,0 +1,294 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "name": "Node_00",
+      "role": "corner",
+      "position": {
+        "x": 0.228,
+        "y": 0.026,
+        "z": -0.228
+      }
+    },
+    {
+      "index": 1,
+      "name": "Node_01",
+      "role": "outer",
+      "position": {
+        "x": 0.228,
+        "y": 0.026,
+        "z": -0.1368
+      }
+    },
+    {
+      "index": 2,
+      "name": "Node_02",
+      "role": "outer",
+      "position": {
+        "x": 0.228,
+        "y": 0.026,
+        "z": -0.0456
+      }
+    },
+    {
+      "index": 3,
+      "name": "Node_03",
+      "role": "outer",
+      "position": {
+        "x": 0.228,
+        "y": 0.026,
+        "z": 0.0456
+      }
+    },
+    {
+      "index": 4,
+      "name": "Node_04",
+      "role": "outer",
+      "position": {
+        "x": 0.228,
+        "y": 0.026,
+        "z": 0.1368
+      }
+    },
+    {
+      "index": 5,
+      "name": "Node_05",
+      "role": "corner",
+      "position": {
+        "x": 0.228,
+        "y": 0.026,
+        "z": 0.228
+      }
+    },
+    {
+      "index": 6,
+      "name": "Node_06",
+      "role": "outer",
+      "position": {
+        "x": 0.1368,
+        "y": 0.026,
+        "z": 0.228
+      }
+    },
+    {
+      "index": 7,
+      "name": "Node_07",
+      "role": "outer",
+      "position": {
+        "x": 0.0456,
+        "y": 0.026,
+        "z": 0.228
+      }
+    },
+    {
+      "index": 8,
+      "name": "Node_08",
+      "role": "outer",
+      "position": {
+        "x": -0.0456,
+        "y": 0.026,
+        "z": 0.228
+      }
+    },
+    {
+      "index": 9,
+      "name": "Node_09",
+      "role": "outer",
+      "position": {
+        "x": -0.1368,
+        "y": 0.026,
+        "z": 0.228
+      }
+    },
+    {
+      "index": 10,
+      "name": "Node_10",
+      "role": "corner",
+      "position": {
+        "x": -0.228,
+        "y": 0.026,
+        "z": 0.228
+      }
+    },
+    {
+      "index": 11,
+      "name": "Node_11",
+      "role": "outer",
+      "position": {
+        "x": -0.228,
+        "y": 0.026,
+        "z": 0.1368
+      }
+    },
+    {
+      "index": 12,
+      "name": "Node_12",
+      "role": "outer",
+      "position": {
+        "x": -0.228,
+        "y": 0.026,
+        "z": 0.0456
+      }
+    },
+    {
+      "index": 13,
+      "name": "Node_13",
+      "role": "outer",
+      "position": {
+        "x": -0.228,
+        "y": 0.026,
+        "z": -0.0456
+      }
+    },
+    {
+      "index": 14,
+      "name": "Node_14",
+      "role": "outer",
+      "position": {
+        "x": -0.228,
+        "y": 0.026,
+        "z": -0.1368
+      }
+    },
+    {
+      "index": 15,
+      "name": "Node_15",
+      "role": "corner",
+      "position": {
+        "x": -0.228,
+        "y": 0.026,
+        "z": -0.228
+      }
+    },
+    {
+      "index": 16,
+      "name": "Node_16",
+      "role": "outer",
+      "position": {
+        "x": -0.1368,
+        "y": 0.026,
+        "z": -0.228
+      }
+    },
+    {
+      "index": 17,
+      "name": "Node_17",
+      "role": "outer",
+      "position": {
+        "x": -0.0456,
+        "y": 0.026,
+        "z": -0.228
+      }
+    },
+    {
+      "index": 18,
+      "name": "Node_18",
+      "role": "outer",
+      "position": {
+        "x": 0.0456,
+        "y": 0.026,
+        "z": -0.228
+      }
+    },
+    {
+      "index": 19,
+      "name": "Node_19",
+      "role": "outer",
+      "position": {
+        "x": 0.1368,
+        "y": 0.026,
+        "z": -0.228
+      }
+    },
+    {
+      "index": 20,
+      "name": "Node_20",
+      "role": "diagonal",
+      "position": {
+        "x": 0.152,
+        "y": 0.026,
+        "z": 0.152
+      }
+    },
+    {
+      "index": 21,
+      "name": "Node_21",
+      "role": "diagonal",
+      "position": {
+        "x": 0.076,
+        "y": 0.026,
+        "z": 0.076
+      }
+    },
+    {
+      "index": 22,
+      "name": "Node_22",
+      "role": "diagonal",
+      "position": {
+        "x": -0.152,
+        "y": 0.026,
+        "z": 0.152
+      }
+    },
+    {
+      "index": 23,
+      "name": "Node_23",
+      "role": "diagonal",
+      "position": {
+        "x": -0.076,
+        "y": 0.026,
+        "z": 0.076
+      }
+    },
+    {
+      "index": 24,
+      "name": "Node_24",
+      "role": "diagonal",
+      "position": {
+        "x": -0.152,
+        "y": 0.026,
+        "z": -0.152
+      }
+    },
+    {
+      "index": 25,
+      "name": "Node_25",
+      "role": "diagonal",
+      "position": {
+        "x": -0.076,
+        "y": 0.026,
+        "z": -0.076
+      }
+    },
+    {
+      "index": 26,
+      "name": "Node_26",
+      "role": "diagonal",
+      "position": {
+        "x": 0.152,
+        "y": 0.026,
+        "z": -0.152
+      }
+    },
+    {
+      "index": 27,
+      "name": "Node_27",
+      "role": "diagonal",
+      "position": {
+        "x": 0.076,
+        "y": 0.026,
+        "z": -0.076
+      }
+    },
+    {
+      "index": 28,
+      "name": "Node_28",
+      "role": "center",
+      "position": {
+        "x": 0,
+        "y": 0.026,
+        "z": 0
+      }
+    }
+  ]
+}
