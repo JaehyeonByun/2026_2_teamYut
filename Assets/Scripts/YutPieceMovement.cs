@@ -2,15 +2,14 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-// First prototype: one piece, one fixed outer route, and a separate finish point.
-// This is not the final rule engine (no shortcuts, captures, stacks, or turns yet).
+// Movement presentation uses YutRouteRules; turn manager owns capture/health/turns.
 public class YutPieceMovement : MonoBehaviour
 {
     // Keep old serialized field names to preserve scene assignments.
     [SerializeField] private Transform waitingPoint;
     [SerializeField] private Transform[] route;
     [SerializeField, Min(0.01f)] private float moveSpeed = 1.2f;
-    [SerializeField] private float heightOffset = 0.06f;
+    [SerializeField] private float heightOffset = 0.015f;
     [Header("New shortcut nodes (center is separate)")]
     [SerializeField] private Transform centerPoint;
     [SerializeField] private Transform[] diagonalA = new Transform[4];
@@ -92,6 +91,13 @@ public class YutPieceMovement : MonoBehaviour
         }
         isMoving = false;
         Debug.Log(name + ": " + CurrentNodeName, this);
+    }
+
+    // Expose the already assigned board anchor for destination UI. No remapping needed.
+    public Transform GetBoardPoint(int node)
+    {
+        if (!initialized || node < 0 || node > YutRouteRules.Finished) return null;
+        return GetPoint(node);
     }
 
     private Transform GetPoint(int node)
