@@ -15,6 +15,7 @@ public class CameraDirector : MonoBehaviour
     [SerializeField] private bool enableDebugKeyboard = true;
 
     [SerializeField] private CinemachineCamera scaleCamera;
+    private bool throwFocus;
     private bool scaleFocus;
     public bool HasScaleCamera => ready && scaleCamera != null && scaleCamera.isActiveAndEnabled;
     private bool showingBoard;
@@ -34,6 +35,7 @@ public class CameraDirector : MonoBehaviour
             return;
         }
 
+        ApplyFixedThrowPose();
         ShowDefault();
     }
 
@@ -53,14 +55,36 @@ public class CameraDirector : MonoBehaviour
     // Also callable from a UI Button On Click event.
     public void ToggleView()
     {
-        if (!ready || scaleFocus || brain.IsBlending) return;
+        if (!ready || scaleFocus || throwFocus || brain.IsBlending) return;
         if (showingBoard) ShowDefault();
         else ShowBoard();
     }
 
-    public void ShowDefault() { if (ready && !scaleFocus) Activate(defaultCamera); }
-    public void ShowBoard() { if (ready && !scaleFocus) Activate(boardCamera); }
-    public void ShowThrow() { if (ready && !scaleFocus) Activate(throwCamera != null ? throwCamera : defaultCamera); }
+    public void ShowDefault() { if (ready && !scaleFocus && !throwFocus) Activate(defaultCamera); }
+    public void ShowBoard() { if (ready && !scaleFocus && !throwFocus) Activate(boardCamera); }
+    public void ShowThrow() { if (ready && !scaleFocus && !throwFocus) Activate(throwCamera != null ? throwCamera : boardCamera); }
+    // Preserve the existing manager API. Board/flight bounds no longer change the shot.
+    public void PrepareThrowView(Bounds envelope, Vector3 playerSide)
+    {
+        if (ready) ApplyFixedThrowPose();
+    }
+    private void ApplyFixedThrowPose()
+    {
+        if (throwCamera == null) return;
+        Transform pose = throwCamera.transform;
+        // Inspector Transform values are local to the parent (world values if unparented).
+        pose.localPosition = new Vector3(0f, 1.9f, -1.45f);
+        pose.localRotation = Quaternion.Euler(40f, 0f, 0f);
+        pose.localScale = Vector3.one;
+        throwCamera.ForceCameraPosition(pose.position, pose.rotation);
+    }
+    public void BeginThrowFocus()
+    {
+        if (!ready || scaleFocus) return;
+        throwFocus = true;
+        Activate(throwCamera != null ? throwCamera : boardCamera);
+    }
+    public void EndThrowFocus() { throwFocus = false; }
     public void BeginScaleFocus()
     {
         if (!HasScaleCamera) return;
@@ -70,6 +94,7 @@ public class CameraDirector : MonoBehaviour
     public void EndScaleFocus() { scaleFocus = false; }
     private void Activate(CinemachineCamera target)
     {
+        if (target == throwCamera) ApplyFixedThrowPose();
         defaultCamera.Priority = target == defaultCamera ? 20 : 10;
         boardCamera.Priority = target == boardCamera ? 20 : 10;
         if (throwCamera != null) throwCamera.Priority = target == throwCamera ? 20 : 10;

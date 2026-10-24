@@ -14,7 +14,7 @@ public class YutTurnManager : MonoBehaviour
     public enum TurnState
     {
         Preparing, PlayerInput, PlayerMoving, OpponentThinking,
-        OpponentMoving, GameOver, SetupError, ChoosingRoute, AwaitingRoll, Rolling, CardPlaying
+        OpponentMoving, GameOver, SetupError, ChoosingRoute, AwaitingRoll, Rolling, CardPlaying, ChargingThrow
     }
     [Header("Exactly four DIFFERENT pieces per team")]
     [SerializeField] private YutPieceMovement[] playerPieces = new YutPieceMovement[4];
@@ -28,6 +28,8 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private Button rollButton;
     [SerializeField] private Button confirmMoveButton;
     [SerializeField] private TMP_Text resultText;
+    [Header("Hold to throw")]
+    [SerializeField] private bool usePowerCharge = true;
     [Header("Destination click movement")]
     [SerializeField] private bool useDestinationClicks = true;
     private YutDestinationPicker destinationPicker;
@@ -50,6 +52,9 @@ public class YutTurnManager : MonoBehaviour
     [Header("Timing")]
     [SerializeField, Min(0f)] private float opponentThinkSeconds = 0.8f;
     [SerializeField, Min(0f)] private float resultHoldSeconds = 0.6f;
+    [Header("Throw readability")]
+    [SerializeField, Min(0f)] private float throwLeadSeconds = 0.3f;
+    [SerializeField, Min(0f)] private float minimumResultViewSeconds = 1.8f;
     [Header("Testing only")]
     [SerializeField] private bool skipOpponentForRouteTests;
     [SerializeField] private TurnState currentState = TurnState.Preparing;
@@ -60,6 +65,7 @@ public class YutTurnManager : MonoBehaviour
     private readonly System.Random playerRollRandom = new System.Random(System.Guid.NewGuid().GetHashCode());
     private readonly System.Random opponentRollRandom = new System.Random(System.Guid.NewGuid().GetHashCode());
     private readonly System.Random opponentDecisionRandom = new System.Random(System.Guid.NewGuid().GetHashCode());
+    private readonly System.Random opponentPowerRandom = new System.Random(System.Guid.NewGuid().GetHashCode());
     private readonly Queue<int> testPlayerRolls = new Queue<int>();
     private readonly Queue<int> testOpponentRolls = new Queue<int>();
     private bool ready;
@@ -94,6 +100,13 @@ public class YutTurnManager : MonoBehaviour
             if (boardPointer == null) boardPointer = gameObject.AddComponent<YutBoardPointer>();
             if (!boardPointer.isActiveAndEnabled || !boardPointer.Initialize(this, cameraBrain.GetComponent<Camera>(), playerPieces, opponentPieces, destinationPicker))
             { ready = false; Fail("Check piece meshes and Resources/YutInteraction/PieceOutline shader."); yield break; }
+        }
+        if(usePowerCharge)
+        {
+            var powerButton=rollButton.GetComponent<YutPowerThrowButton>();
+            if(powerButton==null) powerButton=rollButton.gameObject.AddComponent<YutPowerThrowButton>();
+            if(!powerButton.isActiveAndEnabled || !powerButton.Initialize(this,rollButton,resultText.font))
+            { ready=false;Fail("Power throw needs an enabled YutPowerThrowButton on the Roll UI button.");yield break; }
         }
         RestartMatch();
     }
@@ -148,32 +161,60 @@ public class YutTurnManager : MonoBehaviour
         turnText.text=selectionPrompt+(move==null?"":"\n"+move.Describe());
     }
 
+    public bool IsPowerCharging => ready && isActiveAndEnabled && currentState==TurnState.ChargingThrow;
+    public bool TryBeginPowerCharge()
+    {
+        if(!usePowerCharge || !ready || !isActiveAndEnabled || currentState!=TurnState.AwaitingRoll || !playerPool.CanRoll) return false;
+        SetState(TurnState.ChargingThrow,"Hold to charge. Release on the button to throw; move outside to cancel.");
+        return true;
+    }
+    public void CancelPowerCharge()
+    {
+        if(!IsPowerCharging) return;
+        SetState(TurnState.AwaitingRoll,"Charge cancelled. Hold Roll to try again.");
+    }
+    public void ReleasePowerCharge(float power)
+    {
+        if(!IsPowerCharging || !playerPool.CanRoll) return;
+        BeginPlayerRoll(power);
+    }
     public void PlayerRoll()
     {
-        if (!ready || !isActiveAndEnabled || currentState != TurnState.AwaitingRoll || !playerPool.CanRoll) return;
-        SetState(TurnState.Rolling, "Rolling..."); // Lock synchronously before starting the coroutine.
-        StartCoroutine(RollForPlayer());
+        // Preserve the old Button.OnClick binding without a second throw on pointer-up.
+        if(usePowerCharge || !ready || !isActiveAndEnabled || currentState!=TurnState.AwaitingRoll || !playerPool.CanRoll) return;
+        BeginPlayerRoll(0.5f);
     }
-    private IEnumerator RollForPlayer()
+    private void BeginPlayerRoll(float power)
     {
+        power=float.IsNaN(power)||float.IsInfinity(power)?0.5f:Mathf.Clamp01(power);
+        SetState(TurnState.Rolling,"Rolling at "+Mathf.RoundToInt(power*100f)+"% power...");
+        StartCoroutine(RollForPlayer(power));
+    }
+    private IEnumerator RollForPlayer(float power)
+    {
+        cameraDirector.PrepareThrowView(throwPresenter.ThrowViewBounds,throwPresenter.PlayerSide);
+        cameraDirector.BeginThrowFocus();
+        yield return WaitForCamera();
+        yield return new WaitForSeconds(throwLeadSeconds);
         bool forced = testPlayerRolls.Count > 0;
-        YutThrow generated;
         if (forced)
         {
             int forcedSteps = testPlayerRolls.Dequeue();
-            generated = YutThrow.FromMask(forcedSteps == 5 ? 0 : (1 << forcedSteps) - 1);
+            yield return throwPresenter.PlayThrow(forcedSteps == 5 ? 0 : (1 << forcedSteps) - 1, false, power);
         }
-        else generated = YutThrow.Roll(playerRollRandom);
+        else yield return throwPresenter.PlayPhysicalThrow(false, power);
+        if (throwPresenter.LastCompletedMask < 0)
+        { Fail("Physical throw failed: " + throwPresenter.LastError); yield break; }
+        YutThrow generated = YutThrow.FromMask(throwPresenter.LastCompletedMask);
         int steps = generated.Steps;
-        yield return throwPresenter.PlayThrow(generated.FaceMask, false);
-        if (throwPresenter.LastCompletedMask != generated.FaceMask)
-        { Fail("Throw animation was interrupted. Reset after checking the presenter."); yield break; }
         if (!playerPool.RecordRoll(steps)) { Fail("Roll had no matching roll credit."); yield break; }
-        latestRoll = "Player: " + YutThrow.Name(steps) + " (" + steps + " steps)";
+        latestRoll = "Player: " + YutThrow.Name(steps) + " (" + steps + " steps) | Power " + Mathf.RoundToInt(power*100f) + "%";
         lastOutcome = (forced ? "[TEST] " : "") + "Player rolled " + YutThrow.Name(steps) + ".";
         if (!forced) Debug.Log($"Player face mask: {generated.FaceMask}, result: {steps}", this);
         SetState(TurnState.Rolling, lastOutcome);
-        yield return new WaitForSeconds(resultHoldSeconds);
+        yield return new WaitForSeconds(Mathf.Max(resultHoldSeconds,minimumResultViewSeconds));
+        throwPresenter.ResetPresentation();
+        cameraDirector.EndThrowFocus();
         yield return PreparePlayerPhase();
     }
     public void SelectPlayerPiece(int index)
@@ -285,10 +326,15 @@ public class YutTurnManager : MonoBehaviour
         selectedIndex = -1;
         selectedResultId = -1;
         SetState(TurnState.Preparing, "Your turn - camera moving...");
-        if (playerPool.CanRoll) cameraDirector.ShowThrow();
+        cameraDirector.EndThrowFocus();
+        if (playerPool.CanRoll)
+        {
+            cameraDirector.PrepareThrowView(throwPresenter.ThrowViewBounds,throwPresenter.PlayerSide);
+            cameraDirector.ShowThrow();
+        }
         else cameraDirector.ShowBoard();
         yield return WaitForCamera();
-        if (playerPool.CanRoll) SetState(TurnState.AwaitingRoll, "Press Roll. " + lastOutcome);
+        if (playerPool.CanRoll) SetState(TurnState.AwaitingRoll, (usePowerCharge?"Hold Roll and release to throw. ":"Press Roll. ") + lastOutcome);
         else if (playerPool.CanMove) SetState(TurnState.PlayerInput, (useDestinationClicks ? "Click a player piece to see all destinations. Click the same piece again to cancel. " : "Select a saved result and P1-P4, then Move. ") + Score());
         else Fail("Player phase has no available action.");
     }
@@ -309,24 +355,31 @@ public class YutTurnManager : MonoBehaviour
             yield return new WaitForSeconds(opponentThinkSeconds);
             if (opponentPool.CanRoll)
             {
-                YutThrow roll;
-                if (testOpponentRolls.Count > 0)
+                bool forced = testOpponentRolls.Count > 0;
+                int forcedMask = -1;
+                if (forced)
                 {
                     int steps = testOpponentRolls.Dequeue();
-                    roll = YutThrow.FromMask(steps == 5 ? 0 : (1 << steps) - 1);
+                    forcedMask = steps == 5 ? 0 : (1 << steps) - 1;
                 }
-                else roll = YutThrow.Roll(opponentRollRandom);
                 SetState(TurnState.Rolling, "Opponent rolling...");
-                cameraDirector.ShowThrow();
+                cameraDirector.PrepareThrowView(throwPresenter.ThrowViewBounds,throwPresenter.PlayerSide);
+                cameraDirector.BeginThrowFocus();
                 yield return WaitForCamera();
-                yield return throwPresenter.PlayThrow(roll.FaceMask, true);
-                if (throwPresenter.LastCompletedMask != roll.FaceMask)
-                { Fail("Opponent throw animation was interrupted."); yield break; }
+                yield return new WaitForSeconds(throwLeadSeconds);
+                float power = 0.35f + (float)opponentPowerRandom.NextDouble()*0.5f;
+                if (forced) yield return throwPresenter.PlayThrow(forcedMask, true, power);
+                else yield return throwPresenter.PlayPhysicalThrow(true, power);
+                if (throwPresenter.LastCompletedMask < 0)
+                { Fail("Opponent physical throw failed: " + throwPresenter.LastError); yield break; }
+                YutThrow roll = YutThrow.FromMask(throwPresenter.LastCompletedMask);
                 if (!opponentPool.RecordRoll(roll.Steps)) { Fail("Opponent roll rejected."); yield break; }
                 latestRoll = "Opponent: " + YutThrow.Name(roll.Steps) + " (" + roll.Steps + " steps)";
                 SetState(TurnState.OpponentThinking, "Opponent rolled " + YutThrow.Name(roll.Steps));
                 if (roll.Steps >= 4 && opponentReaction != null) opponentReaction.OnGoodRoll();
-                yield return new WaitForSeconds(resultHoldSeconds);
+                yield return new WaitForSeconds(Mathf.Max(resultHoldSeconds,minimumResultViewSeconds));
+                throwPresenter.ResetPresentation();
+                cameraDirector.EndThrowFocus();
                 continue;
             }
             if (!opponentPool.CanMove) { Fail("Opponent has a pending action."); yield break; }
@@ -462,6 +515,7 @@ public class YutTurnManager : MonoBehaviour
     public void RestartMatch()
     {
         if (!ready || !isActiveAndEnabled) return;
+        if (cameraDirector != null) cameraDirector.EndThrowFocus();
         StopAllCoroutines();
         skipOpponentForRouteTests = false;
         ResetAllPieces();
@@ -541,7 +595,7 @@ public class YutTurnManager : MonoBehaviour
         if (healingCardText != null) healingCardText.text = "Cards disabled";
 
         bool input = ready && currentState == TurnState.PlayerInput && playerPool.CanMove;
-        if (rollButton != null) rollButton.interactable = ready && currentState == TurnState.AwaitingRoll && playerPool.CanRoll;
+        if (rollButton != null) rollButton.interactable = ready && (currentState == TurnState.AwaitingRoll || currentState == TurnState.ChargingThrow) && playerPool.CanRoll;
         var selected = playerPool.Find(selectedResultId);
         if (confirmMoveButton != null) confirmMoveButton.interactable = !useDestinationClicks && input && selectedIndex >= 0
             && selected != null && PieceAvailable(playerPieces, selectedIndex);
@@ -622,11 +676,14 @@ public class YutTurnManager : MonoBehaviour
     }
     private void Fail(string reason)
     {
-        SetState(TurnState.SetupError, "Setup error - check Console.");
+        if (cameraDirector != null) cameraDirector.EndThrowFocus();
+        if (throwPresenter != null) throwPresenter.ResetPresentation();
+        SetState(TurnState.SetupError, "Setup error: " + reason + " (see Console)");
         Debug.LogError("YutTurnManager: " + reason, this);
     }
     private void OnDisable()
     {
+        if (cameraDirector != null) cameraDirector.EndThrowFocus();
         StopAllCoroutines();
         if (ready) ResetAllPieces();
         SetState(TurnState.Preparing, "Paused - enable and press Reset.");
@@ -637,6 +694,7 @@ public class YutTurnManager : MonoBehaviour
     {
         if (!Application.isPlaying || !ready || !isActiveAndEnabled)
         { Debug.LogWarning("Enter Play mode with all fields assigned first.", this); return false; }
+        if (cameraDirector != null) cameraDirector.EndThrowFocus();
         StopAllCoroutines();
         ResetAllPieces();
         skipOpponentForRouteTests = skipOpponent;
