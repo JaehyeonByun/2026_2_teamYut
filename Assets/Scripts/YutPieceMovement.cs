@@ -29,7 +29,11 @@ public class YutPieceMovement : MonoBehaviour
     private void Start()
     {
         initialized = ValidateSetup();
-        if (initialized) ResetPiece();
+        if (initialized)
+        {
+            YutBurnVisual.GetOrAdd(gameObject).SetOutline(false); // Pieces use burn FX only; pointer selection remains separate.
+            ResetPiece();
+        }
     }
 
     private bool ValidateSetup()
@@ -110,10 +114,37 @@ public class YutPieceMovement : MonoBehaviour
         return route[20];
     }
 
+    public void BeginCaptureReturn()
+    {
+        if(!initialized || !isActiveAndEnabled) { ResetPiece(); return; }
+        StopAllCoroutines();
+        var fx=YutBurnVisual.GetOrAdd(gameObject);
+        fx.Restore();
+        currentNodeId=YutRouteRules.Waiting;
+        stackOffset=0;
+        isMoving=true;
+        StartCoroutine(CaptureReturn(fx));
+    }
+    private IEnumerator CaptureReturn(YutBurnVisual fx)
+    {
+        yield return fx.BurnAway();
+        transform.position=waitingPoint.position+Vector3.up*heightOffset;
+        fx.SetProgress(1);
+        if(fx.IsBurning && fx.hiddenSeconds>0) yield return new WaitForSeconds(fx.hiddenSeconds);
+        yield return fx.BurnIn();
+        isMoving=false;
+    }
+    private void RestoreBurnVisual()
+    {
+        var fx=GetComponent<YutBurnVisual>();
+        if(fx) fx.Restore();
+    }
+
     public void ResetPiece()
     {
         if (!initialized) return;
         StopAllCoroutines();
+        RestoreBurnVisual();
         currentNodeId = YutRouteRules.Waiting;
         stackOffset = 0f;
         isMoving = false;
@@ -123,6 +154,7 @@ public class YutPieceMovement : MonoBehaviour
     private void OnDisable()
     {
         StopAllCoroutines();
+        RestoreBurnVisual();
         isMoving = false;
         if (initialized)
             transform.position = GetPoint(currentNodeId).position + Vector3.up * (heightOffset + stackOffset);
@@ -141,6 +173,7 @@ public class YutPieceMovement : MonoBehaviour
     {
         if (!initialized || node < 0 || node > 30) return;
         StopAllCoroutines();
+        RestoreBurnVisual();
         isMoving = false;
         currentNodeId = node;
         SetStackLevel(0);

@@ -55,6 +55,8 @@ public class YutTurnManager : MonoBehaviour
     [Header("Throw readability")]
     [SerializeField, Min(0f)] private float throwLeadSeconds = 0.3f;
     [SerializeField, Min(0f)] private float minimumResultViewSeconds = 1.8f;
+    [SerializeField, Min(0f)] private float opponentBonusLookSeconds = 1f;
+    [SerializeField, Min(0f)] private float opponentTurnEndLookSeconds = 1f;
     [Header("Testing only")]
     [SerializeField] private bool skipOpponentForRouteTests;
     [SerializeField] private TurnState currentState = TurnState.Preparing;
@@ -213,7 +215,7 @@ public class YutTurnManager : MonoBehaviour
         if (!forced) Debug.Log($"Player face mask: {generated.FaceMask}, result: {steps}", this);
         SetState(TurnState.Rolling, lastOutcome);
         yield return new WaitForSeconds(Mathf.Max(resultHoldSeconds,minimumResultViewSeconds));
-        throwPresenter.ResetPresentation();
+        yield return throwPresenter.DissolvePresentation();
         cameraDirector.EndThrowFocus();
         yield return PreparePlayerPhase();
     }
@@ -296,6 +298,7 @@ public class YutTurnManager : MonoBehaviour
             bool finishing=playerPieces[index].IsFinished;
             if(finishing) yield return FocusScaleForAction();
             int captured=ResolveLanding(playerPieces,opponentPieces,index,"Player",group);
+            while (CaptureEffectsRunning()) yield return null;
             if(!playerPool.CompleteMove(captured)) { Fail("Missing pending player move."); yield break; }
             if(captured>0) lastOutcome+=playerPool.PendingRolls>0?" Roll again.":" Turn bonus already used: no extra roll.";
             if(CheckDuelVictory()) yield break;
@@ -349,10 +352,11 @@ public class YutTurnManager : MonoBehaviour
         SetState(TurnState.OpponentThinking, "Opponent turn.");
         cameraDirector.ShowDefault();
         yield return WaitForCamera();
+        bool bonusThrowPrepared=false;
         while (!opponentPool.IsComplete)
         {
             SetState(TurnState.OpponentThinking, "Opponent thinking... " + Score());
-            yield return new WaitForSeconds(opponentThinkSeconds);
+            if(!bonusThrowPrepared) yield return new WaitForSeconds(opponentThinkSeconds);
             if (opponentPool.CanRoll)
             {
                 bool forced = testOpponentRolls.Count > 0;
@@ -365,6 +369,7 @@ public class YutTurnManager : MonoBehaviour
                 SetState(TurnState.Rolling, "Opponent rolling...");
                 cameraDirector.PrepareThrowView(throwPresenter.ThrowViewBounds,throwPresenter.PlayerSide);
                 cameraDirector.BeginThrowFocus();
+                bonusThrowPrepared=false;
                 yield return WaitForCamera();
                 yield return new WaitForSeconds(throwLeadSeconds);
                 float power = 0.35f + (float)opponentPowerRandom.NextDouble()*0.5f;
@@ -378,12 +383,23 @@ public class YutTurnManager : MonoBehaviour
                 SetState(TurnState.OpponentThinking, "Opponent rolled " + YutThrow.Name(roll.Steps));
                 if (roll.Steps >= 4 && opponentReaction != null) opponentReaction.OnGoodRoll();
                 yield return new WaitForSeconds(Mathf.Max(resultHoldSeconds,minimumResultViewSeconds));
-                throwPresenter.ResetPresentation();
+                yield return throwPresenter.DissolvePresentation();
                 cameraDirector.EndThrowFocus();
+                // Only a Yut/Mo which actually earned the remaining throw gets this cutaway.
+                if(roll.Steps>=4 && opponentPool.CanRoll)
+                {
+                    cameraDirector.BeginOpponentReactionFocus();
+                    yield return WaitForCamera();
+                    yield return new WaitForSeconds(opponentBonusLookSeconds);
+                    cameraDirector.EndThrowFocus();
+                    cameraDirector.BeginThrowFocus();
+                    yield return WaitForCamera();
+                    bonusThrowPrepared=true;
+                }
                 continue;
             }
             if (!opponentPool.CanMove) { Fail("Opponent has a pending action."); yield break; }
-            cameraDirector.ShowDefault();
+            cameraDirector.ShowBoard();
             yield return WaitForCamera();
             List<int> candidates = GroupRepresentatives(opponentPieces);
             if (candidates.Count == 0) { Fail("No opponent piece available."); yield break; }
@@ -398,6 +414,7 @@ public class YutTurnManager : MonoBehaviour
             bool finishing = opponentPieces[index].IsFinished;
             if (finishing) yield return FocusScaleForAction();
             int captured = ResolveLanding(opponentPieces, playerPieces, index, "Opponent", group);
+            while (CaptureEffectsRunning()) yield return null;
             if (!opponentPool.CompleteMove(captured)) { Fail("Missing pending opponent move."); yield break; }
             if (captured > 0) lastOutcome += opponentPool.PendingRolls > 0 ? " Roll again." : " Turn bonus already used: no extra roll.";
             if (CheckDuelVictory()) yield break;
@@ -406,6 +423,11 @@ public class YutTurnManager : MonoBehaviour
             yield return new WaitForSeconds(finishing ? scaleHoldSeconds : resultHoldSeconds);
             if (finishing) cameraDirector.EndScaleFocus();
         }
+        SetState(TurnState.Preparing, "Opponent turn complete.");
+        cameraDirector.BeginOpponentReactionFocus();
+        yield return WaitForCamera();
+        yield return new WaitForSeconds(opponentTurnEndLookSeconds);
+        cameraDirector.EndThrowFocus();
         yield return BeginPlayerTurn();
     }
 
@@ -453,7 +475,7 @@ public class YutTurnManager : MonoBehaviour
         }
         int destination = allies[selected].CurrentNodeId;
         List<int> captured = YutGroupRules.Captured(Nodes(enemies), destination);
-        foreach (int index in captured) enemies[index].ResetPiece();
+        foreach (int index in captured) enemies[index].BeginCaptureReturn();
         RefreshStacks();
         int size = YutGroupRules.Members(Nodes(allies), selected).Count;
         lastOutcome = destination == YutRouteRules.Finished ? actor + " finished a group." :
@@ -469,6 +491,12 @@ public class YutTurnManager : MonoBehaviour
         }
         Debug.Log(lastOutcome, this);
         return captured.Count;
+    }
+    private bool CaptureEffectsRunning()
+    {
+        foreach(var piece in playerPieces) if(piece && piece.IsMoving) return true;
+        foreach(var piece in opponentPieces) if(piece && piece.IsMoving) return true;
+        return false;
     }
     private bool CheckDuelVictory()
     {

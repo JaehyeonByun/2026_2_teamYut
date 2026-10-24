@@ -15,6 +15,8 @@ public class CameraDirector : MonoBehaviour
     [SerializeField] private bool enableDebugKeyboard = true;
 
     [SerializeField] private CinemachineCamera scaleCamera;
+    [Tooltip("Optional. If empty, Default Camera is used for opponent reactions.")]
+    [SerializeField] private CinemachineCamera opponentCamera;
     private bool throwFocus;
     private bool scaleFocus;
     public bool HasScaleCamera => ready && scaleCamera != null && scaleCamera.isActiveAndEnabled;
@@ -26,7 +28,8 @@ public class CameraDirector : MonoBehaviour
         ready = brain != null && defaultCamera != null && boardCamera != null
             && defaultCamera != boardCamera
             && (throwCamera == null || (throwCamera != defaultCamera && throwCamera != boardCamera))
-            && (scaleCamera == null || (scaleCamera != defaultCamera && scaleCamera != boardCamera && scaleCamera != throwCamera));
+            && (scaleCamera == null || (scaleCamera != defaultCamera && scaleCamera != boardCamera && scaleCamera != throwCamera))
+            && (opponentCamera == null || (opponentCamera != boardCamera && opponentCamera != throwCamera && opponentCamera != scaleCamera));
 
         if (!ready)
         {
@@ -84,6 +87,18 @@ public class CameraDirector : MonoBehaviour
         throwFocus = true;
         Activate(throwCamera != null ? throwCamera : boardCamera);
     }
+    public void BeginBoardThrowFocus()
+    {
+        if (!ready || scaleFocus) return;
+        throwFocus=true;
+        Activate(boardCamera);
+    }
+    public void BeginOpponentReactionFocus()
+    {
+        if (!ready || scaleFocus) return;
+        throwFocus=true;
+        Activate(opponentCamera != null && opponentCamera.isActiveAndEnabled ? opponentCamera : defaultCamera);
+    }
     public void EndThrowFocus() { throwFocus = false; }
     public void BeginScaleFocus()
     {
@@ -99,6 +114,7 @@ public class CameraDirector : MonoBehaviour
         boardCamera.Priority = target == boardCamera ? 20 : 10;
         if (throwCamera != null) throwCamera.Priority = target == throwCamera ? 20 : 10;
         if (scaleCamera != null) scaleCamera.Priority = target == scaleCamera ? 20 : 10;
+        if (opponentCamera != null) opponentCamera.Priority = target == opponentCamera ? 20 : 10;
         showingBoard = target == boardCamera;
     }
 }

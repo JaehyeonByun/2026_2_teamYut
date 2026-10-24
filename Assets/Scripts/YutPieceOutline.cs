@@ -31,6 +31,7 @@ public class YutPieceOutline : MonoBehaviour
         Renderer[] sources = GetComponentsInChildren<Renderer>(true);
         foreach (var source in sources)
         {
+            if(YutBurnVisual.IsProxy(source)) continue;
             Mesh mesh = null;
             var skinned = source as SkinnedMeshRenderer;
             var filter = source.GetComponent<MeshFilter>();
@@ -121,6 +122,8 @@ public class YutPieceOutline : MonoBehaviour
     public void SetState(bool hovered, bool selected, float pulseAlpha=1f)
     {
         if(material==null) return;
+        var burn=GetComponent<YutBurnVisual>();
+        if(burn && burn.IsBurning) { hovered=false; selected=false; }
         material.SetFloat("_Width",outlineWidth * widthBoost);
         float alpha=Mathf.Clamp01(pulseAlpha)*(selected?1f:hoverAlpha);
         material.SetColor("_Color",new Color(brightness,brightness,brightness,alpha));
