@@ -11442,6 +11442,9 @@ MonoBehaviour:
   rollButton: {fileID: 1258896665}
   confirmMoveButton: {fileID: 723931136}
   resultText: {fileID: 682250104}
+  useSoulResultUI: 1
+  hideLegacyResultText: 1
+  soulResultUI: {fileID: 0}
   usePowerCharge: 1
   useDestinationClicks: 1
   cameraDirector: {fileID: 1530511646}
@@ -11864,7 +11867,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1633510251
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13680,7 +13683,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1809572371
 RectTransform:
   m_ObjectHideFlags: 0

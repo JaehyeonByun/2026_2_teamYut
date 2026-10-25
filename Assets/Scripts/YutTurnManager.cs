@@ -28,6 +28,12 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private Button rollButton;
     [SerializeField] private Button confirmMoveButton;
     [SerializeField] private TMP_Text resultText;
+    [Header("Soul result UI")]
+    [SerializeField] private bool useSoulResultUI = true;
+    [SerializeField] private bool hideLegacyResultText = true;
+    [SerializeField] private YutSoulResultUI soulResultUI;
+    private bool legacyResultWasEnabled;
+    private bool soulUIInitialized;
     [Header("Hold to throw")]
     [SerializeField] private bool usePowerCharge = true;
     [Header("Destination click movement")]
@@ -109,6 +115,13 @@ public class YutTurnManager : MonoBehaviour
             if(powerButton==null) powerButton=rollButton.gameObject.AddComponent<YutPowerThrowButton>();
             if(!powerButton.isActiveAndEnabled || !powerButton.Initialize(this,rollButton,resultText.font))
             { ready=false;Fail("Power throw needs an enabled YutPowerThrowButton on the Roll UI button.");yield break; }
+        }
+        if(useSoulResultUI)
+        {
+            if(!soulResultUI) soulResultUI=GetComponent<YutSoulResultUI>();
+            if(!soulResultUI) soulResultUI=gameObject.AddComponent<YutSoulResultUI>();
+            legacyResultWasEnabled=resultText.enabled;
+            soulUIInitialized=soulResultUI.isActiveAndEnabled && soulResultUI.Initialize(cameraBrain.GetComponent<Camera>(),resultText.font);
         }
         RestartMatch();
     }
@@ -214,10 +227,31 @@ public class YutTurnManager : MonoBehaviour
         lastOutcome = (forced ? "[TEST] " : "") + "Player rolled " + YutThrow.Name(steps) + ".";
         if (!forced) Debug.Log($"Player face mask: {generated.FaceMask}, result: {steps}", this);
         SetState(TurnState.Rolling, lastOutcome);
-        yield return new WaitForSeconds(Mathf.Max(resultHoldSeconds,minimumResultViewSeconds));
+        yield return PresentSoulResult(playerPool,true);
         yield return throwPresenter.DissolvePresentation();
         cameraDirector.EndThrowFocus();
         yield return PreparePlayerPhase();
+    }
+    private IEnumerator PresentSoulResult(YutTurnPool pool,bool player)
+    {
+        float startTime=Time.time;
+        if(useSoulResultUI && soulUIInitialized && soulResultUI && soulResultUI.isActiveAndEnabled && pool.Results.Count>0)
+        {
+            var saved=pool.Results[pool.Results.Count-1];
+            Transform centre=playerPieces[0].GetBoardPoint(25);
+            Vector3 point=centre ? centre.position+Vector3.up*.08f : Vector3.zero;
+            yield return soulResultUI.Present(saved.Id,saved.Steps,player,point);
+        }
+        float remaining=Mathf.Max(resultHoldSeconds,minimumResultViewSeconds)-(Time.time-startTime);
+        if(remaining>0) yield return new WaitForSeconds(remaining);
+    }
+    private void SyncSoulResultUI()
+    {
+        if(!soulUIInitialized || !soulResultUI) return;
+        bool active=useSoulResultUI && soulResultUI.isActiveAndEnabled;
+        if(resultText) resultText.enabled=active && hideLegacyResultText ? false : legacyResultWasEnabled;
+        if(!active || currentState==TurnState.SetupError) {soulResultUI.ClearAll();return;}
+        soulResultUI.SyncResults(showingPlayerPool,(showingPlayerPool ? playerPool : opponentPool).Results);
     }
     public void SelectPlayerPiece(int index)
     {
@@ -382,7 +416,7 @@ public class YutTurnManager : MonoBehaviour
                 latestRoll = "Opponent: " + YutThrow.Name(roll.Steps) + " (" + roll.Steps + " steps)";
                 SetState(TurnState.OpponentThinking, "Opponent rolled " + YutThrow.Name(roll.Steps));
                 if (roll.Steps >= 4 && opponentReaction != null) opponentReaction.OnGoodRoll();
-                yield return new WaitForSeconds(Mathf.Max(resultHoldSeconds,minimumResultViewSeconds));
+                yield return PresentSoulResult(opponentPool,false);
                 yield return throwPresenter.DissolvePresentation();
                 cameraDirector.EndThrowFocus();
                 // Only a Yut/Mo which actually earned the remaining throw gets this cutaway.
@@ -551,6 +585,7 @@ public class YutTurnManager : MonoBehaviour
     }
     private void ResetAllPieces()
     {
+        if(soulResultUI) soulResultUI.ClearAll();
         if (cameraDirector != null) cameraDirector.EndScaleFocus();
         if (duelHealth != null) duelHealth.ResetMatch();
         if (throwPresenter != null) throwPresenter.ResetPresentation();
@@ -673,6 +708,7 @@ public class YutTurnManager : MonoBehaviour
             if (skipOpponentForRouteTests || testPlayerRolls.Count > 0 || testOpponentRolls.Count > 0) text.Append("\n[TEST MODE]");
             resultText.text = text.ToString();
         }
+        SyncSoulResultUI();
         RefreshDestinations();
         if (boardPointer != null) boardPointer.RefreshVisuals();
     }
@@ -715,6 +751,8 @@ public class YutTurnManager : MonoBehaviour
         StopAllCoroutines();
         if (ready) ResetAllPieces();
         SetState(TurnState.Preparing, "Paused - enable and press Reset.");
+        if(soulResultUI) soulResultUI.ClearAll();
+        if(soulUIInitialized && resultText) resultText.enabled=legacyResultWasEnabled;
     }
 
 #if UNITY_EDITOR
