@@ -17,6 +17,9 @@ namespace SoulScaleAsset
         private Quaternion beamLocalRest, leftLocalRest, rightLocalRest;
         private float angle, velocity, swayLeft, swayRight, swayVelocityLeft, swayVelocityRight;
         private bool initialized;
+        private bool impactActive;
+        private float impactStart,impactClock,impactSnap,impactSettle,impactOvershoot;
+        public bool IsImpactAnimating => impactActive;
         public Transform FlameAnchorLeft => flameAnchorLeft;
         public Transform FlameAnchorRight => flameAnchorRight;
         public float CurrentAngle => angle;
@@ -47,7 +50,13 @@ namespace SoulScaleAsset
             float dt = Mathf.Min(Time.deltaTime, 0.05f);
             if (dt <= 0f) return;
             float previous = angle;
-            angle = Mathf.SmoothDamp(angle, Mathf.Clamp(targetAngle, -18f, 18f), ref velocity,
+            if(impactActive)
+            {
+                impactClock+=Time.deltaTime;
+                angle=YutScaleImpactMotion.Angle(impactStart,targetAngle,impactClock,impactSnap,impactSettle,impactOvershoot);
+                if(impactClock>=impactSnap+impactSettle) { impactActive=false;angle=targetAngle;velocity=0f; }
+            }
+            else angle = Mathf.SmoothDamp(angle, Mathf.Clamp(targetAngle, -18f, 18f), ref velocity,
                 Mathf.Max(0.05f, smoothSeconds), Mathf.Infinity, dt);
             if (gentleSway)
             {
@@ -69,11 +78,20 @@ namespace SoulScaleAsset
             speed += (-35f * position - 7f * speed) * dt;
             position = Mathf.Clamp(position + speed * dt, -4f, 4f);
         }
-        public void SetAngle(float degrees) { targetAngle = Mathf.Clamp(degrees, -18f, 18f); }
+        public void SetAngle(float degrees) { impactActive=false; targetAngle = Mathf.Clamp(degrees, -18f, 18f); }
+        public void HoldCurrentAngle() { impactActive=false;targetAngle=angle;velocity=0f; }
+        public void PlayImpactAngle(float degrees,float snapSeconds,float settleSeconds,float overshootDegrees)
+        {
+            if(!initialized || !isActiveAndEnabled) { SetAngle(degrees);return; }
+            impactStart=angle;targetAngle=Mathf.Clamp(degrees,-18f,18f);impactClock=0;
+            impactSnap=Mathf.Max(.05f,snapSeconds);impactSettle=Mathf.Max(.05f,settleSeconds);
+            impactOvershoot=Mathf.Clamp(overshootDegrees,0f,5f);velocity=0f;impactActive=true;
+        }
         public void SetLeftWinner() { SetAngle(18f); }
         public void SetRightWinner() { SetAngle(-18f); }
         public void ResetScale()
         {
+            impactActive=false;
             targetAngle = angle = velocity = swayLeft = swayRight = swayVelocityLeft = swayVelocityRight = 0f;
             RestorePose();
         }
@@ -83,7 +101,7 @@ namespace SoulScaleAsset
             beam.localRotation = beamLocalRest;
             hangLeft.localRotation = leftLocalRest; hangRight.localRotation = rightLocalRest;
         }
-        private void OnDisable() { RestorePose(); angle = velocity = swayLeft = swayRight = swayVelocityLeft = swayVelocityRight = 0f; }
+        private void OnDisable() { impactActive=false; RestorePose(); angle = velocity = swayLeft = swayRight = swayVelocityLeft = swayVelocityRight = 0f; }
         [ContextMenu("Tests/Left Wins (Play Mode)")]
         private void TestLeft() { if (Application.isPlaying) SetLeftWinner(); }
         [ContextMenu("Tests/Right Wins (Play Mode)")]

@@ -54,7 +54,9 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private TMP_Text healingCardText;
     [Header("Scale presentation")]
     [SerializeField, Min(0f)] private float scaleLeadSeconds = 0.12f;
-    [SerializeField, Min(0f)] private float scaleHoldSeconds = 0.85f;
+    [SerializeField, Min(0f)] private float scaleHoldSeconds = 2.6f;
+    [SerializeField, Min(0f)] private float minimumScaleImpactViewSeconds = 2.6f;
+    [SerializeField] private SoulFlameAsset.SoulFlameDuelPresenter scaleImpactPresenter;
     [Header("Timing")]
     [SerializeField, Min(0f)] private float opponentThinkSeconds = 0.8f;
     [SerializeField, Min(0f)] private float resultHoldSeconds = 0.6f;
@@ -339,7 +341,8 @@ public class YutTurnManager : MonoBehaviour
             DiscardIfAllResting(playerPieces,playerPool);
             SetState(TurnState.PlayerMoving,lastOutcome+" "+Score());
             bool more=step+1<plan.Legs.Count;
-            yield return new WaitForSeconds(finishing?scaleHoldSeconds:(more?comboStepPause:resultHoldSeconds));
+            if(finishing) yield return WaitForScaleImpact();
+            else yield return new WaitForSeconds(more?comboStepPause:resultHoldSeconds);
             if(finishing) cameraDirector.EndScaleFocus();
             // Never force a second leg after a finish or a required bonus-roll phase.
             if(finishing || playerPool.CanRoll || playerPool.IsComplete) break;
@@ -454,7 +457,8 @@ public class YutTurnManager : MonoBehaviour
             if (CheckDuelVictory()) yield break;
             DiscardIfAllResting(opponentPieces, opponentPool);
             SetState(TurnState.OpponentMoving, lastOutcome + " " + Score());
-            yield return new WaitForSeconds(finishing ? scaleHoldSeconds : resultHoldSeconds);
+            if(finishing) yield return WaitForScaleImpact();
+            else yield return new WaitForSeconds(resultHoldSeconds);
             if (finishing) cameraDirector.EndScaleFocus();
         }
         SetState(TurnState.Preparing, "Opponent turn complete.");
@@ -565,6 +569,21 @@ public class YutTurnManager : MonoBehaviour
         cameraDirector.BeginScaleFocus();
         yield return WaitForCamera();
         yield return new WaitForSeconds(scaleLeadSeconds);
+    }
+    private IEnumerator WaitForScaleImpact()
+    {
+        // Existing scenes retain the old 0.85 value; the new minimum extends them as well.
+        float until=Time.time+Mathf.Max(scaleHoldSeconds,minimumScaleImpactViewSeconds);
+        if(scaleImpactPresenter==null || !scaleImpactPresenter.UsesHealth(duelHealth))
+        {
+            scaleImpactPresenter=null;
+            foreach(var candidate in FindObjectsOfType<SoulFlameAsset.SoulFlameDuelPresenter>())
+                if(candidate.UsesHealth(duelHealth)) {scaleImpactPresenter=candidate;break;}
+        }
+        // Give the health-observing presenter one Update after ResolveLanding.
+        yield return null;
+        while(Time.time<until || (scaleImpactPresenter!=null && scaleImpactPresenter.IsPresenting))
+            yield return null;
     }
     // Preserve an existing UI binding while cards are excluded from the demo.
     public void UseHealingCard()
