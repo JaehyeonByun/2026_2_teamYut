@@ -11677,6 +11677,7 @@ MonoBehaviour:
   soulResultUI: {fileID: 0}
   usePowerCharge: 1
   useDestinationClicks: 1
+  createPlayerViewButtons: 1
   cameraDirector: {fileID: 1530511646}
   cameraBrain: {fileID: 1262747738}
   throwPresenter: {fileID: 559480109}
@@ -50669,7 +50670,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!1 &8389577394654716918
 GameObject:
   m_ObjectHideFlags: 0

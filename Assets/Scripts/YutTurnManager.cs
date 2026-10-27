@@ -40,6 +40,9 @@ public class YutTurnManager : MonoBehaviour
     [SerializeField] private bool useDestinationClicks = true;
     private YutDestinationPicker destinationPicker;
     private YutBoardPointer boardPointer;
+    [Header("Player view buttons")]
+    [SerializeField] private bool createPlayerViewButtons=true;
+    private YutPlayerViewPanel playerViewPanel;
     [Header("Camera")]
     [SerializeField] private CameraDirector cameraDirector;
     [SerializeField] private CinemachineBrain cameraBrain;
@@ -95,7 +98,7 @@ public class YutTurnManager : MonoBehaviour
         SetState(TurnState.Preparing, "Preparing...");
         yield return null;
         ready = ValidateSetup();
-        if (!ready) { Fail("Check CM_Scale, Duel Health, pieces/UI/cameras and Throw Presenter (including its four sticks and landing points)."); yield break; }
+        if (!ready) { Fail("Check CM_Throw, CM_Scale, Duel Health, pieces/UI/cameras and Throw Presenter (including its four sticks and landing points)."); yield break; }
         if (moveButtons != null)
             for (int i = 0; i < Mathf.Min(5, moveButtons.Length); i++)
                 if (moveButtons[i] != null) resultLabels[i] = moveButtons[i].GetComponentInChildren<TMP_Text>(true);
@@ -110,6 +113,13 @@ public class YutTurnManager : MonoBehaviour
             if (boardPointer == null) boardPointer = gameObject.AddComponent<YutBoardPointer>();
             if (!boardPointer.isActiveAndEnabled || !boardPointer.Initialize(this, cameraBrain.GetComponent<Camera>(), playerPieces, opponentPieces, destinationPicker))
             { ready = false; Fail("Check piece meshes and Resources/YutInteraction/PieceOutline shader."); yield break; }
+        }
+        cameraDirector.BindPlayerViewGuard(()=>CanInspectPlayerView);
+        if(createPlayerViewButtons)
+        {
+            playerViewPanel=GetComponent<YutPlayerViewPanel>();
+            if(playerViewPanel==null)playerViewPanel=gameObject.AddComponent<YutPlayerViewPanel>();
+            playerViewPanel.Initialize(this,resultText!=null?resultText.font:null);
         }
         if(usePowerCharge)
         {
@@ -131,7 +141,7 @@ public class YutTurnManager : MonoBehaviour
     {
         if (turnText == null || resultText == null || turnText == resultText
             || duelHealth == null || !duelHealth.isActiveAndEnabled
-            || cameraDirector == null || !cameraDirector.HasScaleCamera || cameraBrain == null
+            || cameraDirector == null || !cameraDirector.HasScaleCamera || !cameraDirector.HasThrowCamera || cameraBrain == null
             || throwPresenter == null || !throwPresenter.IsReady || !throwPresenter.isActiveAndEnabled
             || playerPieces == null || playerPieces.Length != 4
             || opponentPieces == null || opponentPieces.Length != 4
@@ -149,7 +159,7 @@ public class YutTurnManager : MonoBehaviour
         if (healingCardButton != null && buttons.Contains(healingCardButton)) return false;
         return true;
     }
-    private bool CanSelect() => ready && isActiveAndEnabled
+    private bool CanSelect() => ready && isActiveAndEnabled && cameraDirector!=null && !cameraDirector.IsBlending
         && currentState == TurnState.PlayerInput && playerPool.CanMove;
 
     public bool BoardPointerEnabled => useDestinationClicks && CanSelect();
@@ -178,10 +188,28 @@ public class YutTurnManager : MonoBehaviour
         turnText.text=selectionPrompt+(move==null?"":"\n"+move.Describe());
     }
 
+    public bool CanInspectPlayerView => ready && isActiveAndEnabled
+        && (currentState==TurnState.AwaitingRoll || currentState==TurnState.PlayerInput);
+    public bool WaitingForPlayerRoll => ready && currentState==TurnState.AwaitingRoll && playerPool.CanRoll;
+    public CameraDirector PlayerCameraDirector => cameraDirector;
+    public bool CanThrowFromCurrentView => ready && isActiveAndEnabled && playerPool.CanRoll
+        && (currentState==TurnState.AwaitingRoll || currentState==TurnState.ChargingThrow)
+        && cameraDirector!=null && cameraDirector.IsThrowViewReady;
+    public bool TryChoosePlayerView(CameraDirector.PlayerView view)
+    {
+        if(!CanInspectPlayerView || cameraDirector==null)return false;
+        bool changed=cameraDirector.TryChoosePlayerView(view);
+        if(changed)RefreshUI();return changed;
+    }
+    private void Update()
+    {
+        // Refresh when a Cinemachine blend completes, without rebuilding move highlights.
+        if(rollButton!=null)rollButton.interactable=CanThrowFromCurrentView;
+    }
     public bool IsPowerCharging => ready && isActiveAndEnabled && currentState==TurnState.ChargingThrow;
     public bool TryBeginPowerCharge()
     {
-        if(!usePowerCharge || !ready || !isActiveAndEnabled || currentState!=TurnState.AwaitingRoll || !playerPool.CanRoll) return false;
+        if(!usePowerCharge || currentState!=TurnState.AwaitingRoll || !CanThrowFromCurrentView) return false;
         SetState(TurnState.ChargingThrow,"Hold to charge. Release on the button to throw; move outside to cancel.");
         return true;
     }
@@ -192,17 +220,19 @@ public class YutTurnManager : MonoBehaviour
     }
     public void ReleasePowerCharge(float power)
     {
-        if(!IsPowerCharging || !playerPool.CanRoll) return;
+        if(!IsPowerCharging) return;
+        if(!CanThrowFromCurrentView) { CancelPowerCharge();return; }
         BeginPlayerRoll(power);
     }
     public void PlayerRoll()
     {
         // Preserve the old Button.OnClick binding without a second throw on pointer-up.
-        if(usePowerCharge || !ready || !isActiveAndEnabled || currentState!=TurnState.AwaitingRoll || !playerPool.CanRoll) return;
+        if(usePowerCharge || currentState!=TurnState.AwaitingRoll || !CanThrowFromCurrentView) return;
         BeginPlayerRoll(0.5f);
     }
     private void BeginPlayerRoll(float power)
     {
+        if(!CanThrowFromCurrentView)return;
         power=float.IsNaN(power)||float.IsInfinity(power)?0.5f:Mathf.Clamp01(power);
         SetState(TurnState.Rolling,"Rolling at "+Mathf.RoundToInt(power*100f)+"% power...");
         StartCoroutine(RollForPlayer(power));
@@ -677,7 +707,7 @@ public class YutTurnManager : MonoBehaviour
         if (healingCardText != null) healingCardText.text = "Cards disabled";
 
         bool input = ready && currentState == TurnState.PlayerInput && playerPool.CanMove;
-        if (rollButton != null) rollButton.interactable = ready && (currentState == TurnState.AwaitingRoll || currentState == TurnState.ChargingThrow) && playerPool.CanRoll;
+        if (rollButton != null) rollButton.interactable = CanThrowFromCurrentView;
         var selected = playerPool.Find(selectedResultId);
         if (confirmMoveButton != null) confirmMoveButton.interactable = !useDestinationClicks && input && selectedIndex >= 0
             && selected != null && PieceAvailable(playerPieces, selectedIndex);

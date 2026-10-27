@@ -31,6 +31,20 @@ namespace SoulFlameAsset
         private bool initialized;
         [SerializeField, Min(.1f)] private float windHitMinimumSeconds=.85f;
         [SerializeField, Range(0f,.65f)] private float hitWindBend=.38f;
+        public int CurrentHP => Mathf.Max(0,lastHP);
+        public int MaximumHP => Mathf.Max(1,lastMax);
+        public bool HasHealth => initialized && lastHP>=0;
+        public bool IsOpponentFlame => warmPalette;
+        public Bounds HealthHoverBounds
+        {
+            get
+            {
+                float height=Mathf.Max(.10f,strength*worldHeight);
+                return new Bounds(transform.position+Vector3.up*(baseOffset+height*.5f),
+                    new Vector3(Mathf.Max(.12f,height*1.5f),height*1.2f,Mathf.Max(.12f,height*1.5f)));
+            }
+        }
+        public Vector3 HealthLabelPoint => transform.position+Vector3.up*(baseOffset+Mathf.Max(.10f,strength*worldHeight)+.045f);
         public float HitSeconds => Mathf.Max(windHitMinimumSeconds,hitSeconds);
         public float FadeSeconds => fadeSeconds;
         public bool IsExtinguished => lastHP==0 && hitRemaining<=0f && strength<=.001f;
@@ -56,7 +70,9 @@ namespace SoulFlameAsset
             MakeTongue("LeftTongue",new Vector3(-.19f,.015f,.015f),new Vector3(.58f,.68f,.67f),-26f,renderers);
             MakeTongue("RightTongue",new Vector3(.19f,.025f,-.015f),new Vector3(.48f,.51f,.55f),32f,renderers);
             toonRenderers=renderers.ToArray();
-            initialized=true;return true;
+            initialized=true;
+            if(GetComponent<YutFlameHealthTooltip>()==null) gameObject.AddComponent<YutFlameHealthTooltip>();
+            return true;
         }
         private void MakeTongue(string name,Vector3 position,Vector3 size,float angle,System.Collections.Generic.List<Renderer> renderers)
         {
@@ -110,7 +126,7 @@ namespace SoulFlameAsset
             if(!instant && hp==lastHP && maximum==lastMax) return;
             bool hurt=lastHP>=0 && hp<lastHP;
             lastHP=hp;lastMax=maximum;
-            target=hp==0?0f:Mathf.Lerp(.68f,1f,(float)hp/maximum);
+            target=(float)hp/maximum; // Linear SIZE ratio: 50 HP / 100 HP = 50% scale.
             if(instant) { strength=target;hitRemaining=0f; }
             else if(hurt) hitRemaining=HitSeconds;
         }

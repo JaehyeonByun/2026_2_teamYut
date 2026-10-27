@@ -17,6 +17,28 @@ public class CameraDirector : MonoBehaviour
     [SerializeField] private CinemachineCamera scaleCamera;
     [Tooltip("Optional. If empty, Default Camera is used for opponent reactions.")]
     [SerializeField] private CinemachineCamera opponentCamera;
+    public enum PlayerView { Board, Scale, Front, Throw }
+    private System.Func<bool> playerViewGuard;
+    private CinemachineCamera activeTarget;
+    public bool HasThrowCamera => ready && throwCamera!=null && throwCamera.isActiveAndEnabled;
+    public bool IsBlending => brain==null || brain.IsBlending || (activeTarget!=null && brain.ActiveVirtualCamera!=activeTarget);
+    public bool IsThrowViewReady => ready && isActiveAndEnabled && throwCamera!=null && throwCamera.isActiveAndEnabled
+        && !brain.IsBlending && activeTarget==throwCamera && brain.ActiveVirtualCamera==throwCamera;
+    public void BindPlayerViewGuard(System.Func<bool> guard) { playerViewGuard=guard; }
+    public bool CanChoosePlayerView => ready && isActiveAndEnabled && !scaleFocus && !throwFocus && !IsBlending
+        && playerViewGuard!=null && playerViewGuard();
+    private CinemachineCamera CameraFor(PlayerView view)
+    {
+        switch(view) {case PlayerView.Board:return boardCamera;case PlayerView.Scale:return scaleCamera;
+            case PlayerView.Front:return defaultCamera;default:return throwCamera;}
+    }
+    public bool IsPlayerViewAvailable(PlayerView view) { var c=CameraFor(view);return c!=null && c.isActiveAndEnabled; }
+    public bool IsSelectedPlayerView(PlayerView view) {return activeTarget==CameraFor(view);}
+    public bool TryChoosePlayerView(PlayerView view)
+    {
+        if(!CanChoosePlayerView || !IsPlayerViewAvailable(view))return false;
+        Activate(CameraFor(view));return true;
+    }
     private bool throwFocus;
     private bool scaleFocus;
     public bool HasScaleCamera => ready && scaleCamera != null && scaleCamera.isActiveAndEnabled;
@@ -58,9 +80,8 @@ public class CameraDirector : MonoBehaviour
     // Also callable from a UI Button On Click event.
     public void ToggleView()
     {
-        if (!ready || scaleFocus || throwFocus || brain.IsBlending) return;
-        if (showingBoard) ShowDefault();
-        else ShowBoard();
+        if (!CanChoosePlayerView) return;
+        TryChoosePlayerView(showingBoard?PlayerView.Front:PlayerView.Board);
     }
 
     public void ShowDefault() { if (ready && !scaleFocus && !throwFocus) Activate(defaultCamera); }
@@ -109,6 +130,7 @@ public class CameraDirector : MonoBehaviour
     public void EndScaleFocus() { scaleFocus = false; }
     private void Activate(CinemachineCamera target)
     {
+        activeTarget=target;
         if (target == throwCamera) ApplyFixedThrowPose();
         defaultCamera.Priority = target == defaultCamera ? 20 : 10;
         boardCamera.Priority = target == boardCamera ? 20 : 10;
