@@ -57,6 +57,16 @@ public sealed class YutDuelRules
         if (player) PlayerHP += restored; else OpponentHP += restored;
         return restored;
     }
+    // Presentation demo damage never consumes pieces or changes resting flags.
+    public int ApplyDemoDamage(bool targetPlayer, int amount)
+    {
+        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+        if (IsOver) return 0;
+        int current = targetPlayer ? PlayerHP : OpponentHP;
+        int dealt = Math.Min(current, amount);
+        if (targetPlayer) PlayerHP -= dealt; else OpponentHP -= dealt;
+        return dealt;
+    }
 #if UNITY_EDITOR
     public void SetHealthForTesting(int playerHP, int opponentHP)
     {

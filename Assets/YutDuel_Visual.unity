@@ -14501,6 +14501,7 @@ GameObject:
   - component: {fileID: 1585189672}
   - component: {fileID: 1585189671}
   - component: {fileID: 1585189673}
+  - component: {fileID: 1585189674}
   m_Layer: 0
   m_Name: TurnManager
   m_TagString: Untagged
@@ -14609,6 +14610,21 @@ MonoBehaviour:
   maxAlpha: 0.85
   lightIntensity: 2
   destinationSizeBoost: 1.2
+--- !u!114 &1585189674
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1585189670}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fb572efbe148af4585addc59d6b92cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::YutDemoCommands
+  turnManager: {fileID: 1585189671}
+  enableDemoCommands: 1
+  demoDamage: 20
 --- !u!1 &1585326204
 GameObject:
   m_ObjectHideFlags: 0

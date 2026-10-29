@@ -627,11 +627,53 @@ public class YutTurnManager : MonoBehaviour
         yield return null;
         while (cameraBrain.IsBlending) yield return null;
     }
+    private bool demoBusy;
+    public bool TryDemoScale(bool targetPlayer, bool victory, int damage = 20)
+    {
+        if (demoBusy || !CanInspectPlayerView || duelHealth==null || duelHealth.IsOver
+            || cameraDirector==null || !cameraDirector.HasScaleCamera || cameraDirector.IsBlending)
+            return false;
+        demoBusy=true;
+        StopAllCoroutines();
+        StartCoroutine(PlayDemoScale(targetPlayer,victory,Mathf.Max(1,damage)));
+        return true;
+    }
+    private IEnumerator PlayDemoScale(bool targetPlayer,bool victory,int damage)
+    {
+        TurnState previousState=currentState;
+        string previousMessage=turnText!=null?turnText.text:"";
+        var previousView=CameraDirector.PlayerView.Board;
+        foreach(CameraDirector.PlayerView view in System.Enum.GetValues(typeof(CameraDirector.PlayerView)))
+            if(cameraDirector.IsSelectedPlayerView(view))previousView=view;
+        SetState(TurnState.Preparing,"Demo: scale presentation");
+        yield return FocusScaleForAction();
+        // Move the camera BEFORE changing HP, so the beginning of the effect is visible.
+        int amount=victory ? duelHealth.OpponentHP : damage;
+        duelHealth.ApplyDemoDamage(victory?false:targetPlayer,amount);
+        yield return WaitForScaleImpact();
+        if(duelHealth.IsOver)
+        {
+            CheckDuelVictory();
+            demoBusy=false;
+            yield break;
+        }
+        cameraDirector.EndScaleFocus();
+        SetState(previousState,previousMessage);
+        cameraDirector.TryChoosePlayerView(previousView);
+        demoBusy=false;
+    }
+    public bool TryDemoReset()
+    {
+        if(demoBusy || !ready || !isActiveAndEnabled
+            || !(CanInspectPlayerView || currentState==TurnState.GameOver))return false;
+        RestartMatch();return true;
+    }
     public void RestartMatch()
     {
         if (!ready || !isActiveAndEnabled) return;
         if (cameraDirector != null) cameraDirector.EndThrowFocus();
         StopAllCoroutines();
+        demoBusy=false;
         skipOpponentForRouteTests = false;
         ResetAllPieces();
         StartCoroutine(BeginPlayerTurn());
@@ -810,6 +852,7 @@ public class YutTurnManager : MonoBehaviour
         // Do not restart gameplay, reset HP/pieces, or refresh board UI here.
         StopAllCoroutines();
         currentState = TurnState.Preparing;
+        demoBusy=false;
         selectedIndex = selectedResultId = -1;
         playerPool.Clear();
         opponentPool.Clear();

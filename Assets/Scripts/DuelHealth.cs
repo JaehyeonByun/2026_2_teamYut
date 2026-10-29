@@ -38,6 +38,12 @@ public sealed class DuelHealth : MonoBehaviour
     }
     public int Heal(bool player, int amount)
     { int restored = rules.Heal(player, amount); RefreshUI(); return restored; }
+    public int ApplyDemoDamage(bool targetPlayer, int amount)
+    {
+        int dealt = rules.ApplyDemoDamage(targetPlayer, amount);
+        RefreshUI();
+        return dealt;
+    }
     // Called once AFTER input is locked and the result camera is ready.
     public void PublishResult()
     {
