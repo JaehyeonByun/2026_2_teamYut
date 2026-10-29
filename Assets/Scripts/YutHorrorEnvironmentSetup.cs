@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -152,3 +153,5 @@ public static class YutHorrorEnvironmentSetup
         Debug.Log("Previous environment restored. Generated materials remain available; save the scene.");
     }
 }
+
+#endif

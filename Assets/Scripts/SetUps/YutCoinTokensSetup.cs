@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -13,12 +14,21 @@ public static class YutCoinTokensSetup {
     [Serializable] public class Part { public string name,material; public Vector3[] vertices,normals;public Vector2[] uv;public int[] triangles; }
     static bool building;
     static YutCoinTokensSetup(){EditorApplication.delayCall+=AutoBuild;}
-    static string Root(){
-        foreach(string guid in AssetDatabase.FindAssets("YutCoinTokensSetup t:MonoScript")){
-            string p=AssetDatabase.GUIDToAssetPath(guid);const string suffix="/Editor/YutCoinTokensSetup.cs";
-            if(p.EndsWith(suffix,StringComparison.Ordinal))return p.Substring(0,p.Length-suffix.Length);
+    static string Root()
+    {
+        const string kitName = "YutCoinTokens";
+        string found = null;
+        foreach (string guid in AssetDatabase.FindAssets(kitName + " t:Folder", new[] { "Assets" }))
+        {
+            string folder = AssetDatabase.GUIDToAssetPath(guid);
+            if (System.IO.Path.GetFileName(folder) != kitName) continue;
+            if (!System.IO.File.Exists(folder + "/Source/Meshes.json")) continue;
+            if (found != null)
+                throw new System.InvalidOperationException(kitName + " has multiple source folders: " + found + " and " + folder);
+            found = folder;
         }
-        throw new FileNotFoundException("YutCoinTokensSetup.cs not found.");
+        if (found != null) return found;
+        throw new System.IO.DirectoryNotFoundException("Cannot find " + kitName + "/Source/Meshes.json under Assets. Keep the kit folder name and its Source contents together. Script location does not matter.");
     }
     static void AutoBuild(){
         if(EditorApplication.isCompiling || EditorApplication.isUpdating){EditorApplication.delayCall+=AutoBuild;return;}
@@ -91,3 +101,5 @@ public static class YutCoinTokensSetup {
     }
 }
 }
+
+#endif

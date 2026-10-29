@@ -806,10 +806,21 @@ public class YutTurnManager : MonoBehaviour
     }
     private void OnDisable()
     {
-        if (cameraDirector != null) cameraDirector.EndThrowFocus();
+        // Scene teardown may already have destroyed pieces and board transforms.
+        // Do not restart gameplay, reset HP/pieces, or refresh board UI here.
         StopAllCoroutines();
-        if (ready) ResetAllPieces();
-        SetState(TurnState.Preparing, "Paused - enable and press Reset.");
+        currentState = TurnState.Preparing;
+        selectedIndex = selectedResultId = -1;
+        playerPool.Clear();
+        opponentPool.Clear();
+        testPlayerRolls.Clear();
+        testOpponentRolls.Clear();
+        shownMoves.Clear();
+        if (cameraDirector != null)
+        {
+            cameraDirector.EndThrowFocus();
+            cameraDirector.EndScaleFocus();
+        }
         if(soulResultUI) soulResultUI.ClearAll();
         if(soulUIInitialized && resultText) resultText.enabled=legacyResultWasEnabled;
     }

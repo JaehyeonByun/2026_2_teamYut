@@ -166,7 +166,7 @@ public class YutPieceMovement : MonoBehaviour
 
     public void ResetPiece()
     {
-        if (!initialized) return;
+        if (this == null || !initialized || waitingPoint == null) return;
         StopAllCoroutines();
         RestoreBurnVisual();
         SetStackPresentation(true,1);
@@ -181,8 +181,8 @@ public class YutPieceMovement : MonoBehaviour
         StopAllCoroutines();
         RestoreBurnVisual();
         isMoving = false;
-        if (initialized)
-            transform.position = GetPoint(currentNodeId).position + Vector3.up * (heightOffset + stackOffset);
+        // Board/waiting points can be destroyed before this component during teardown.
+        // Position changes belong to movement and explicit ResetPiece, not OnDisable.
     }
 
     // Cosmetic only: game rules compare node IDs, never Transform positions.

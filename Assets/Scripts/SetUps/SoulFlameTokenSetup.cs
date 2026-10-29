@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.IO;
 using UnityEngine;
@@ -10,13 +11,21 @@ public static class SoulFlameTokenSetup {
     [Serializable] public class Batch { public Part[] meshes; }
     [Serializable] public class Part { public string name, material; public Vector3[] vertices,normals; public Vector2[] uv; public int[] triangles; }
     static SoulFlameTokenSetup() { EditorApplication.delayCall+=AutoBuild; }
-    static string Root() {
-        foreach(string guid in AssetDatabase.FindAssets("SoulFlameTokenSetup t:MonoScript")) {
-            string path=AssetDatabase.GUIDToAssetPath(guid);
-            const string suffix="/Editor/SoulFlameTokenSetup.cs";
-            if(path.EndsWith(suffix,StringComparison.Ordinal)) return path.Substring(0,path.Length-suffix.Length);
+    static string Root()
+    {
+        const string kitName = "SoulFlameToken";
+        string found = null;
+        foreach (string guid in AssetDatabase.FindAssets(kitName + " t:Folder", new[] { "Assets" }))
+        {
+            string folder = AssetDatabase.GUIDToAssetPath(guid);
+            if (System.IO.Path.GetFileName(folder) != kitName) continue;
+            if (!System.IO.File.Exists(folder + "/Source/Meshes.json")) continue;
+            if (found != null)
+                throw new System.InvalidOperationException(kitName + " has multiple source folders: " + found + " and " + folder);
+            found = folder;
         }
-        throw new FileNotFoundException("SoulFlameTokenSetup.cs not found");
+        if (found != null) return found;
+        throw new System.IO.DirectoryNotFoundException("Cannot find " + kitName + "/Source/Meshes.json under Assets. Keep the kit folder name and its Source contents together. Script location does not matter.");
     }
     static void AutoBuild() {
         if(EditorApplication.isCompiling || EditorApplication.isUpdating) { EditorApplication.delayCall+=AutoBuild; return; }
@@ -72,3 +81,5 @@ public static class SoulFlameTokenSetup {
     }
 }
 }
+
+#endif

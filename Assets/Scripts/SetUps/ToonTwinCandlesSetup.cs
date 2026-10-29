@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -13,12 +14,21 @@ public static class ToonTwinCandlesSetup {
     [Serializable] public class Part { public string name,material; public Vector3[] vertices,normals;public Vector2[] uv;public int[] triangles; }
     static bool building;
     static ToonTwinCandlesSetup(){EditorApplication.delayCall+=AutoBuild;}
-    static string Root(){
-        foreach(string guid in AssetDatabase.FindAssets("ToonTwinCandlesSetup t:MonoScript")){
-            string p=AssetDatabase.GUIDToAssetPath(guid);const string suffix="/Editor/ToonTwinCandlesSetup.cs";
-            if(p.EndsWith(suffix,StringComparison.Ordinal))return p.Substring(0,p.Length-suffix.Length);
+    static string Root()
+    {
+        const string kitName = "ToonTwinCandles";
+        string found = null;
+        foreach (string guid in AssetDatabase.FindAssets(kitName + " t:Folder", new[] { "Assets" }))
+        {
+            string folder = AssetDatabase.GUIDToAssetPath(guid);
+            if (System.IO.Path.GetFileName(folder) != kitName) continue;
+            if (!System.IO.File.Exists(folder + "/Source/Meshes.json")) continue;
+            if (found != null)
+                throw new System.InvalidOperationException(kitName + " has multiple source folders: " + found + " and " + folder);
+            found = folder;
         }
-        throw new FileNotFoundException("ToonTwinCandlesSetup.cs not found.");
+        if (found != null) return found;
+        throw new System.IO.DirectoryNotFoundException("Cannot find " + kitName + "/Source/Meshes.json under Assets. Keep the kit folder name and its Source contents together. Script location does not matter.");
     }
     static void AutoBuild(){
         if(EditorApplication.isCompiling || EditorApplication.isUpdating){EditorApplication.delayCall+=AutoBuild;return;}
@@ -119,3 +129,5 @@ public static class ToonTwinCandlesSetup {
     static void AddBox(GameObject go,Vector3 center,Vector3 size){var c=go.AddComponent<BoxCollider>();c.center=center;c.size=size;}
 }
 }
+
+#endif
