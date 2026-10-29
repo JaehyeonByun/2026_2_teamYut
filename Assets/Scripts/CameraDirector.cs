@@ -41,6 +41,10 @@ public class CameraDirector : MonoBehaviour
     }
     private bool throwFocus;
     private bool scaleFocus;
+    // Includes both manual inspection and automatic damage focus; never during a blend.
+    public bool IsScaleViewReady => ready && isActiveAndEnabled && brain!=null
+        && scaleCamera!=null && scaleCamera.isActiveAndEnabled
+        && activeTarget==scaleCamera && !brain.IsBlending && brain.ActiveVirtualCamera==scaleCamera;
     public bool HasScaleCamera => ready && scaleCamera != null && scaleCamera.isActiveAndEnabled;
     private bool showingBoard;
     private bool ready;

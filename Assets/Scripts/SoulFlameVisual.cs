@@ -29,6 +29,7 @@ namespace SoulFlameAsset
         private float strength=1f,target=1f,hitRemaining;
         private int lastHP=-1,lastMax=-1;
         private bool initialized;
+        private bool healthHoverEnabled=true;
         [SerializeField, Min(.1f)] private float windHitMinimumSeconds=.85f;
         [SerializeField, Range(0f,.65f)] private float hitWindBend=.38f;
         public int CurrentHP => Mathf.Max(0,lastHP);
@@ -52,6 +53,20 @@ namespace SoulFlameAsset
             ParticleSystem impact,Light source,Color color)
         { visualRoot=root;core=mainFire;sparks=embers;hitBurst=impact;glow=source;flameColor=color;warmPalette=color.r>color.b; }
         public void SetTeam(bool opponent) { warmPalette=opponent; }
+        // Call on a NEW candle host before initialization. Does not alter scale flames.
+        public void ConfigureIndicator(float height,float offset,float fade)
+        {
+            healthHoverEnabled=false;
+            worldHeight=Mathf.Max(.01f,height);baseOffset=Mathf.Max(0f,offset);
+            fadeSeconds=Mathf.Max(.05f,fade);
+        }
+        public void SetIndicatorLit(bool lit,bool instant=false)
+        {
+            if(!Initialize())return;
+            lastHP=lastMax=-1;hitRemaining=0f;
+            target=lit?1f:0f;
+            if(instant)strength=target;
+        }
         private void Start() { Initialize(); }
         private bool Initialize()
         {
@@ -71,7 +86,7 @@ namespace SoulFlameAsset
             MakeTongue("RightTongue",new Vector3(.19f,.025f,-.015f),new Vector3(.48f,.51f,.55f),32f,renderers);
             toonRenderers=renderers.ToArray();
             initialized=true;
-            if(GetComponent<YutFlameHealthTooltip>()==null) gameObject.AddComponent<YutFlameHealthTooltip>();
+            if(healthHoverEnabled && GetComponent<YutFlameHealthTooltip>()==null) gameObject.AddComponent<YutFlameHealthTooltip>();
             return true;
         }
         private void MakeTongue(string name,Vector3 position,Vector3 size,float angle,System.Collections.Generic.List<Renderer> renderers)

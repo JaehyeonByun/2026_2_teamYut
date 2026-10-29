@@ -82,6 +82,10 @@ public class YutTurnManager : MonoBehaviour
     private readonly Queue<int> testPlayerRolls = new Queue<int>();
     private readonly Queue<int> testOpponentRolls = new Queue<int>();
     private bool ready;
+    public bool CandleResultsArePlayer => showingPlayerPool;
+    public int CandleResultCount => ready && isActiveAndEnabled
+        && currentState!=TurnState.SetupError && currentState!=TurnState.GameOver
+        ? (showingPlayerPool?playerPool:opponentPool).Results.Count : 0;
     private bool showingPlayerPool = true;
     private int selectedIndex = -1;
     private int selectedResultId = -1;
@@ -654,18 +658,24 @@ public class YutTurnManager : MonoBehaviour
     }
     private void RefreshStacks()
     {
-        foreach (var team in new[] {playerPieces, opponentPieces})
+        foreach(var team in new[]{playerPieces,opponentPieces})
         {
-            var levels = new Dictionary<int, int>();
-            foreach (var piece in team)
+            var groups=new Dictionary<int,List<YutPieceMovement>>();
+            foreach(var piece in team)
             {
-                int node = piece.CurrentNodeId;
-                if (!YutGroupRules.IsOnBoard(node)) { piece.SetStackLevel(0); continue; }
-                int level;
-                levels.TryGetValue(node, out level);
-                piece.SetStackLevel(level);
-                levels[node] = level + 1;
+                // Captured members remain visually hidden until their own waiting-point respawn.
+                if(piece.IsMoving)continue;
+                var countLabel=piece.GetComponent<YutStackCountLabel>();
+                if(countLabel==null)countLabel=piece.gameObject.AddComponent<YutStackCountLabel>();
+                countLabel.SetOpponent(team==opponentPieces);
+                piece.SetStackLevel(0);
+                int node=piece.CurrentNodeId;
+                if(!YutGroupRules.IsOnBoard(node)){piece.SetStackPresentation(true,1);continue;}
+                if(!groups.ContainsKey(node))groups[node]=new List<YutPieceMovement>();
+                groups[node].Add(piece);
             }
+            foreach(var group in groups.Values)
+                for(int i=0;i<group.Count;i++)group[i].SetStackPresentation(i==0,group.Count);
         }
     }
     private static int[] Nodes(YutPieceMovement[] team)

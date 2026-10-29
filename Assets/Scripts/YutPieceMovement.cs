@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Movement presentation uses YutRouteRules; turn manager owns capture/health/turns.
+[DefaultExecutionOrder(1000)]
 public class YutPieceMovement : MonoBehaviour
 {
     // Keep old serialized field names to preserve scene assignments.
@@ -18,6 +19,27 @@ public class YutPieceMovement : MonoBehaviour
     private bool isMoving;
     private bool initialized;
     private float stackOffset;
+    private bool stackHidden;
+    private readonly Dictionary<Collider,bool> colliderStates=new Dictionary<Collider,bool>();
+    private YutStackCountLabel stackLabel;
+    public bool IsStackHidden => stackHidden;
+    public void SetStackPresentation(bool representative,int count)
+    {
+        stackHidden=!representative;stackOffset=0;
+        foreach(var r in GetComponentsInChildren<Renderer>(true))if(r!=null)r.forceRenderingOff=stackHidden;
+        foreach(var collider in GetComponentsInChildren<Collider>(true))
+        {
+            if(!colliderStates.ContainsKey(collider))colliderStates[collider]=collider.enabled;
+            collider.enabled=colliderStates[collider] && !stackHidden;
+        }
+        if(stackLabel==null){stackLabel=GetComponent<YutStackCountLabel>();if(stackLabel==null)stackLabel=gameObject.AddComponent<YutStackCountLabel>();}
+        stackLabel.SetCount(representative?count:1);
+    }
+    private void LateUpdate()
+    {
+        // Includes selection/FX proxies created after initial model setup.
+        if(stackHidden)foreach(var r in GetComponentsInChildren<Renderer>(true))r.forceRenderingOff=true;
+    }
 
     public bool IsReady => initialized;
     public int CurrentNodeId => currentNodeId;
@@ -123,6 +145,7 @@ public class YutPieceMovement : MonoBehaviour
         currentNodeId=YutRouteRules.Waiting;
         stackOffset=0;
         isMoving=true;
+        if(stackLabel!=null)stackLabel.SetCount(1);
         StartCoroutine(CaptureReturn(fx));
     }
     private IEnumerator CaptureReturn(YutBurnVisual fx)
@@ -130,6 +153,7 @@ public class YutPieceMovement : MonoBehaviour
         yield return fx.BurnAway();
         transform.position=waitingPoint.position+Vector3.up*heightOffset;
         fx.SetProgress(1);
+        SetStackPresentation(true,1);
         if(fx.IsBurning && fx.hiddenSeconds>0) yield return new WaitForSeconds(fx.hiddenSeconds);
         yield return fx.BurnIn();
         isMoving=false;
@@ -145,6 +169,7 @@ public class YutPieceMovement : MonoBehaviour
         if (!initialized) return;
         StopAllCoroutines();
         RestoreBurnVisual();
+        SetStackPresentation(true,1);
         currentNodeId = YutRouteRules.Waiting;
         stackOffset = 0f;
         isMoving = false;
@@ -163,7 +188,7 @@ public class YutPieceMovement : MonoBehaviour
     // Cosmetic only: game rules compare node IDs, never Transform positions.
     public void SetStackLevel(int level)
     {
-        stackOffset = Mathf.Max(0, level) * 0.08f;
+        stackOffset = 0f; // Stack count UI replaces vertical stacking.
         if (initialized && !isMoving)
             transform.position = GetPoint(currentNodeId).position + Vector3.up * (heightOffset + stackOffset);
     }
@@ -175,6 +200,7 @@ public class YutPieceMovement : MonoBehaviour
         StopAllCoroutines();
         RestoreBurnVisual();
         isMoving = false;
+        SetStackPresentation(true,1);
         currentNodeId = node;
         SetStackLevel(0);
     }

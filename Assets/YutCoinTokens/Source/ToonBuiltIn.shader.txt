@@ -1,0 +1,27 @@
+Shader "YutCoinTokens/BuiltIn" {
+Properties {
+ _Color("Color",Color)=(1,1,1,1)
+ _ShadowLevel("Shadow Level",Range(0,1))=0.32
+ _MiddleLevel("Middle Level",Range(0,1))=0.65
+ _ThresholdLow("Low Threshold",Range(0,1))=0.25
+ _ThresholdHigh("High Threshold",Range(0,1))=0.65
+}
+SubShader {
+ Tags { "RenderType"="Opaque" }
+ LOD 200
+ CGPROGRAM
+ #pragma surface surf CandleToon fullforwardshadows addshadow
+ #pragma target 3.0
+ fixed4 _Color;
+ half _ShadowLevel,_MiddleLevel,_ThresholdLow,_ThresholdHigh;
+ struct Input { float3 worldPos; };
+ half4 LightingCandleToon(SurfaceOutput s,half3 lightDir,half atten) {
+  half ndl=saturate(dot(s.Normal,lightDir));
+  half band=ndl<_ThresholdLow?_ShadowLevel:(ndl<_ThresholdHigh?_MiddleLevel:1);
+  return half4(s.Albedo*_LightColor0.rgb*band*atten,s.Alpha);
+ }
+ void surf(Input IN,inout SurfaceOutput o){o.Albedo=_Color.rgb;o.Alpha=1;}
+ ENDCG
+}
+Fallback "Diffuse"
+}
